@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import NetflixLanding from './components/NetflixLanding';
 import Login from './components/Login';
-import Dashboard from './components/Dashboard';
+import NetflixViewer from './components/NetflixViewer';
 import AdminPanel from './components/AdminPanel';
 import { validateAccessPass, resetPassTimer, getHomeConfig, DEFAULT_HOME_CONFIG } from './services/authService';
 
 const SESSION_STORAGE_KEY = 'netflix_active_vip_pass';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('landing'); // 'landing' | 'login' | 'dashboard' | 'admin'
+  const [currentView, setCurrentView] = useState('landing'); // 'landing' | 'login' | 'session' | 'admin'
   const [sessionData, setSessionData] = useState(null);
   const [remainingSeconds, setRemainingSeconds] = useState(3600);
   const [isExpired, setIsExpired] = useState(false);
@@ -46,7 +46,7 @@ export default function App() {
           applySessionResult(authResult);
           // Si no está navegando a /admin, entra al dashboard
           if (window.location.pathname.toLowerCase() !== '/admin') {
-            setCurrentView('dashboard');
+            setCurrentView('session');
           }
         }
       } catch (err) {
@@ -93,7 +93,7 @@ export default function App() {
     const authResult = await validateAccessPass(code);
     localStorage.setItem(SESSION_STORAGE_KEY, code);
     applySessionResult(authResult);
-    setCurrentView('dashboard');
+    setCurrentView('session');
     window.history.pushState({}, '', '/');
   };
 
@@ -168,13 +168,12 @@ export default function App() {
         />
       )}
 
-      {currentView === 'dashboard' && sessionData && (
-        <Dashboard
+      {currentView === 'session' && sessionData && (
+        <NetflixViewer
           sessionData={sessionData}
           remainingSeconds={remainingSeconds}
           isExpired={isExpired}
           onLogout={handleLogout}
-          onResetTrialDemo={handleResetTrialDemo}
         />
       )}
     </div>
