@@ -132,6 +132,7 @@ export async function validateAccessPass(code) {
         firstUsedAt: firstUsed,
         remainingTimeMs,
         isExpired,
+        assignedCookie: data.assignedCookie || "",
         internalCookie: data.assignedCookie || "internal_verified_cookie_token"
       };
     }
@@ -174,6 +175,7 @@ export async function validateAccessPass(code) {
     firstUsedAt: firstUsed,
     remainingTimeMs,
     isExpired,
+    assignedCookie: pass.assignedCookie || "",
     internalCookie: pass.assignedCookie
   };
 }

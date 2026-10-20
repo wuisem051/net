@@ -3,19 +3,21 @@ package com.appnet.app;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -39,6 +41,7 @@ import java.util.Locale;
 @CapacitorPlugin(name = "CookiePlugin")
 public class CookiePlugin extends Plugin {
 
+    private static final String TAG = "CookiePlugin";
     private Dialog netflixDialog = null;
     private WebView netflixWebView = null;
     private Handler timerHandler = null;
@@ -49,13 +52,14 @@ public class CookiePlugin extends Plugin {
     /**
      * openNetflixView - Inyecta cookies y abre un WebView nativo en pantalla completa
      * con un banner flotante con temporizador regresivo y botón de cierre.
-     * Al terminar el tiempo o pulsar salir, cierra el visor y limpia las cookies.
      */
     @PluginMethod
     public void openNetflixView(PluginCall call) {
         final String cookieString = call.getString("cookieString", "");
         final int durationSeconds = call.getInt("durationSeconds", 3600);
         final String sessionCode = call.getString("sessionCode", "VIP");
+
+        Log.d(TAG, "openNetflixView called with cookie length: " + (cookieString != null ? cookieString.length() : 0));
 
         final AppCompatActivity activity = getActivity();
         if (activity == null) {
@@ -67,15 +71,19 @@ public class CookiePlugin extends Plugin {
             @Override
             public void run() {
                 try {
-                    // 1. Inyectar cookies en CookieManager nativo
-                    injectCookiesInternal(cookieString);
-
-                    // 2. Si ya hay un visor abierto, cerrarlo
-                    closeNetflixViewInternal();
+                    // 1. Limpiar visor anterior si existe
+                    if (netflixDialog != null && netflixDialog.isShowing()) {
+                        netflixDialog.dismiss();
+                        netflixDialog = null;
+                    }
+                    if (timerHandler != null && timerRunnable != null) {
+                        timerHandler.removeCallbacks(timerRunnable);
+                        timerHandler = null;
+                    }
 
                     remainingSeconds = durationSeconds;
 
-                    // 3. Crear diálogo a pantalla completa
+                    // 2. Crear diálogo a pantalla completa
                     netflixDialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
                     Window window = netflixDialog.getWindow();
                     if (window != null) {
@@ -86,7 +94,7 @@ public class CookiePlugin extends Plugin {
                         }
                     }
 
-                    // Contenedor principal
+                    // Layout raíz
                     FrameLayout rootLayout = new FrameLayout(activity);
                     rootLayout.setLayoutParams(new ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -94,7 +102,7 @@ public class CookiePlugin extends Plugin {
                     ));
                     rootLayout.setBackgroundColor(Color.BLACK);
 
-                    // 4. Configurar el WebView nativo para Netflix
+                    // 3. Crear y configurar WebView nativo
                     netflixWebView = new WebView(activity);
                     netflixWebView.setLayoutParams(new FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -114,33 +122,47 @@ public class CookiePlugin extends Plugin {
                     settings.setAllowContentAccess(true);
                     settings.setMediaPlaybackRequiresUserGesture(false);
 
-                    // User Agent moderno de Chrome Desktop/Android para compatibilidad con Netflix
-                    String defaultUA = settings.getUserAgentString();
-                    if (defaultUA == null || defaultUA.isEmpty()) {
-                        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
-                    }
+                    // User Agent estándar de Chrome Android
+                    settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
 
-                    // Asegurar cookies para el WebView
-                    CookieManager cookieManager = CookieManager.getInstance();
+                    // 4. Habilitar CookieManager explícitamente para este WebView
+                    final CookieManager cookieManager = CookieManager.getInstance();
                     cookieManager.setAcceptCookie(true);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         cookieManager.setAcceptThirdPartyCookies(netflixWebView, true);
                     }
 
+                    // 5. Inyectar cookies de forma síncrona/directa antes de cargar
+                    injectCookiesInternal(cookieString);
+
+                    // Verificar qué cookies ve el CookieManager
+                    String activeCookies = cookieManager.getCookie("https://www.netflix.com");
+                    Log.d(TAG, "Active cookies for https://www.netflix.com: " + (activeCookies != null ? activeCookies.substring(0, Math.min(100, activeCookies.length())) + "..." : "NONE"));
+
                     netflixWebView.setWebViewClient(new WebViewClient() {
                         @Override
                         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                            // Mantener toda la navegación dentro de este WebView
                             view.loadUrl(url);
                             return true;
+                        }
+
+                        @Override
+                        public void onPageFinished(WebView view, String url) {
+                            super.onPageFinished(view, url);
+                            Log.d(TAG, "Page finished loading: " + url);
+                        }
+
+                        @Override
+                        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                            super.onReceivedError(view, request, error);
+                            Log.w(TAG, "WebView error: " + error.toString());
                         }
                     });
 
                     netflixWebView.setWebChromeClient(new WebChromeClient());
-
                     rootLayout.addView(netflixWebView);
 
-                    // 5. BANNER FLOTANTE SUPERIOR CON TEMPORIZADOR Y BOTÓN SALIR
+                    // 6. Barra flotante con temporizador
                     LinearLayout topBar = new LinearLayout(activity);
                     topBar.setOrientation(LinearLayout.HORIZONTAL);
                     topBar.setGravity(Gravity.CENTER_VERTICAL);
@@ -162,20 +184,15 @@ public class CookiePlugin extends Plugin {
                     barParams.setMargins(dpToPx(activity, 12), dpToPx(activity, 16), dpToPx(activity, 12), 0);
                     topBar.setLayoutParams(barParams);
 
-                    // Logo / Título VIP
+                    // Logo VIP
                     TextView vipLabel = new TextView(activity);
                     vipLabel.setText("VIP NETFLIX");
                     vipLabel.setTextColor(Color.parseColor("#E50914"));
                     vipLabel.setTextSize(13);
                     vipLabel.setTypeface(null, Typeface.BOLD);
-                    LinearLayout.LayoutParams vipParams = new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                    );
-                    vipParams.weight = 0;
-                    topBar.addView(vipLabel, vipParams);
+                    topBar.addView(vipLabel, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-                    // Temporizador en el centro
+                    // Contador
                     timerTextView = new TextView(activity);
                     timerTextView.setText(formatSeconds(remainingSeconds));
                     timerTextView.setTextColor(Color.WHITE);
@@ -188,19 +205,13 @@ public class CookiePlugin extends Plugin {
                     timerBg.setCornerRadius(dpToPx(activity, 12));
                     timerBg.setStroke(dpToPx(activity, 1), Color.parseColor("#22C55E"));
                     timerTextView.setBackground(timerBg);
-                    int tPadH = dpToPx(activity, 12);
-                    int tPadV = dpToPx(activity, 4);
-                    timerTextView.setPadding(tPadH, tPadV, tPadH, tPadV);
+                    timerTextView.setPadding(dpToPx(activity, 12), dpToPx(activity, 4), dpToPx(activity, 12), dpToPx(activity, 4));
 
-                    LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(
-                            0,
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                            1.0f
-                    );
+                    LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
                     timerParams.setMargins(dpToPx(activity, 8), 0, dpToPx(activity, 8), 0);
                     topBar.addView(timerTextView, timerParams);
 
-                    // Botón de salir
+                    // Botón Salir
                     TextView closeBtn = new TextView(activity);
                     closeBtn.setText("✕ Salir");
                     closeBtn.setTextColor(Color.parseColor("#CCCCCC"));
@@ -211,9 +222,7 @@ public class CookiePlugin extends Plugin {
                     btnBg.setColor(Color.parseColor("#33FFFFFF"));
                     btnBg.setCornerRadius(dpToPx(activity, 12));
                     closeBtn.setBackground(btnBg);
-                    int bPadH = dpToPx(activity, 10);
-                    int bPadV = dpToPx(activity, 5);
-                    closeBtn.setPadding(bPadH, bPadV, bPadH, bPadV);
+                    closeBtn.setPadding(dpToPx(activity, 10), dpToPx(activity, 5), dpToPx(activity, 10), dpToPx(activity, 5));
 
                     closeBtn.setOnClickListener(new View.OnClickListener() {
                         @Override
@@ -221,11 +230,10 @@ public class CookiePlugin extends Plugin {
                             closeNetflixViewInternal();
                         }
                     });
-
                     topBar.addView(closeBtn);
                     rootLayout.addView(topBar);
 
-                    // Iniciar el temporizador regresivo
+                    // 7. Timer Runnable
                     timerHandler = new Handler(Looper.getMainLooper());
                     timerRunnable = new Runnable() {
                         @Override
@@ -234,7 +242,6 @@ public class CookiePlugin extends Plugin {
                             if (timerTextView != null) {
                                 timerTextView.setText(formatSeconds(Math.max(0, remainingSeconds)));
                                 if (remainingSeconds < 300) {
-                                    // Rojo cuando falten menos de 5 min
                                     GradientDrawable warningBg = new GradientDrawable();
                                     warningBg.setColor(Color.parseColor("#40EF4444"));
                                     warningBg.setCornerRadius(dpToPx(activity, 12));
@@ -245,7 +252,6 @@ public class CookiePlugin extends Plugin {
                             }
 
                             if (remainingSeconds <= 0) {
-                                // Al expirar el tiempo, cerrar y limpiar sesión
                                 closeNetflixViewInternal();
                             } else {
                                 timerHandler.postDelayed(this, 1000);
@@ -254,8 +260,8 @@ public class CookiePlugin extends Plugin {
                     };
                     timerHandler.postDelayed(timerRunnable, 1000);
 
-                    // Cargar Netflix
-                    netflixWebView.loadUrl("https://www.netflix.com");
+                    // 8. Cargar página principal de Netflix
+                    netflixWebView.loadUrl("https://www.netflix.com/browse");
 
                     netflixDialog.setContentView(rootLayout);
                     netflixDialog.show();
@@ -265,15 +271,13 @@ public class CookiePlugin extends Plugin {
                     call.resolve(res);
 
                 } catch (Exception e) {
+                    Log.e(TAG, "Error opening Netflix view", e);
                     call.reject("Error opening Netflix view: " + e.getMessage());
                 }
             }
         });
     }
 
-    /**
-     * closeNetflixView - Cierra el visor de Netflix si está abierto y borra cookies.
-     */
     @PluginMethod
     public void closeNetflixView(PluginCall call) {
         AppCompatActivity activity = getActivity();
@@ -319,7 +323,7 @@ public class CookiePlugin extends Plugin {
                     String name = pair.split("=")[0].trim();
                     String expired = name + "=; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Domain=.netflix.com; Path=/";
                     cookieManager.setCookie("https://www.netflix.com", expired);
-                    cookieManager.setCookie("https://netflix.com", expired);
+                    cookieManager.setCookie(".netflix.com", expired);
                 }
             }
             cookieManager.flush();
@@ -327,12 +331,16 @@ public class CookiePlugin extends Plugin {
     }
 
     private void injectCookiesInternal(String cookieString) {
-        if (cookieString == null || cookieString.trim().isEmpty()) return;
+        if (cookieString == null || cookieString.trim().isEmpty()) {
+            Log.w(TAG, "injectCookiesInternal: cookieString is empty");
+            return;
+        }
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
 
         String trimmedStr = cookieString.trim();
+        int injectedCount = 0;
 
         if (trimmedStr.startsWith("[")) {
             try {
@@ -350,6 +358,7 @@ public class CookiePlugin extends Plugin {
                     if (cookieDomain.isEmpty()) cookieDomain = ".netflix.com";
                     if (path.isEmpty()) path = "/";
 
+                    // Formato exacto de set-cookie
                     StringBuilder cookieVal = new StringBuilder();
                     cookieVal.append(name).append("=").append(val);
                     cookieVal.append("; Domain=").append(cookieDomain);
@@ -357,25 +366,33 @@ public class CookiePlugin extends Plugin {
                     if (secure) {
                         cookieVal.append("; Secure");
                     }
-                    cookieVal.append("; SameSite=None");
 
+                    // Inyectar en múltiples variantes de URL para asegurar cobertura en Android
                     cookieManager.setCookie("https://www.netflix.com", cookieVal.toString());
                     cookieManager.setCookie("https://netflix.com", cookieVal.toString());
+                    cookieManager.setCookie(".netflix.com", cookieVal.toString());
+                    cookieManager.setCookie("https://www.netflix.com/", cookieVal.toString());
+                    injectedCount++;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                Log.e(TAG, "Error parsing JSON cookie array", e);
+            }
         } else {
             String[] pairs = cookieString.split(";");
             for (String pair : pairs) {
                 String trimmed = pair.trim();
                 if (!trimmed.isEmpty()) {
-                    String cookieEntry = trimmed + "; Domain=.netflix.com; Path=/; Secure; SameSite=None";
+                    String cookieEntry = trimmed + "; Domain=.netflix.com; Path=/; Secure";
                     cookieManager.setCookie("https://www.netflix.com", cookieEntry);
                     cookieManager.setCookie("https://netflix.com", cookieEntry);
+                    cookieManager.setCookie(".netflix.com", cookieEntry);
+                    injectedCount++;
                 }
             }
         }
 
         cookieManager.flush();
+        Log.d(TAG, "Injected cookies count: " + injectedCount);
     }
 
     @PluginMethod
