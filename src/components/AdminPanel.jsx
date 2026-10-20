@@ -14,11 +14,13 @@ import {
   Save,
   MessageCircle,
   HelpCircle,
-  Tv
+  Tv,
+  Edit2
 } from 'lucide-react';
 import { 
   getAllPasses, 
   createPass, 
+  updatePassCookie,
   getCookiePool, 
   saveCookieToPool, 
   resetPassTimer,
@@ -49,6 +51,10 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
   // Formulario Nueva Cookie
   const [newCookieLabel, setNewCookieLabel] = useState('');
   const [newCookieData, setNewCookieData] = useState('');
+
+  // Edición directa de Cookie por Pase
+  const [editingPass, setEditingPass] = useState(null);
+  const [editCookieText, setEditCookieText] = useState('');
 
   const loadAllData = async () => {
     setLoading(true);
@@ -154,6 +160,24 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
     if (window.confirm(`¿Resetear el temporizador para ${code}?`)) {
       await resetPassTimer(code);
       await loadAllData();
+    }
+  };
+
+  const handleOpenEditCookie = (pass) => {
+    setEditingPass(pass);
+    setEditCookieText(pass.assignedCookie || '');
+  };
+
+  const handleSaveEditCookie = async (e) => {
+    e.preventDefault();
+    if (!editingPass) return;
+    try {
+      await updatePassCookie(editingPass.code, editCookieText.trim());
+      setEditingPass(null);
+      setEditCookieText('');
+      await loadAllData();
+    } catch (err) {
+      alert("Error al actualizar la cookie: " + err.message);
     }
   };
 
@@ -419,7 +443,15 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
                           <td className="p-3.5 text-zinc-500 text-[11px] truncate max-w-[140px]">
                             {p.assignedCookie ? p.assignedCookie.substring(0, 20) + "..." : "Por defecto"}
                           </td>
-                          <td className="p-3.5 text-right font-sans">
+                          <td className="p-3.5 text-right font-sans space-x-1.5">
+                            <button
+                              onClick={() => handleOpenEditCookie(p)}
+                              className="text-[11px] text-amber-300 hover:text-white bg-amber-950/70 hover:bg-amber-900/90 border border-amber-600/50 px-2.5 py-1 rounded transition cursor-pointer inline-flex items-center gap-1"
+                              title="Editar cookie asignada a este usuario"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Cookie</span>
+                            </button>
                             <button
                               onClick={() => handleResetPass(p.code)}
                               className="text-[11px] text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded transition cursor-pointer"
@@ -657,6 +689,85 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
           </div>
         )}
       </div>
+
+      {/* MODAL PARA EDITAR COOKIE DE UN PASE VIP ESPECÍFICO */}
+      {editingPass && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-xl w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between mb-4 border-b border-zinc-800/80 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <h3 className="text-base font-bold text-white">
+                  Editar Cookie de la Licencia: <span className="text-[#E50914] font-mono">{editingPass.code}</span>
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingPass(null)}
+                className="text-zinc-500 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
+              Modifica la cookie asociada a esta sesión VIP. Cuando el usuario acceda con este código, el sistema utilizará esta sesión actualizada.
+            </p>
+
+            <form onSubmit={handleSaveEditCookie} className="space-y-4">
+              <div>
+                <label className="block text-xs text-zinc-300 font-semibold mb-1">
+                  Seleccionar rápidamente desde el Pool de Cookies:
+                </label>
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) setEditCookieText(e.target.value);
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-[#E50914] mb-3"
+                  defaultValue=""
+                >
+                  <option value="" disabled>-- Elegir una cuenta activa del pool --</option>
+                  {cookiesPool.map((c) => (
+                    <option key={c.id} value={c.cookieData}>
+                      {c.label} ({c.cookieData.substring(0, 25)}...)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-zinc-300 font-semibold mb-1">
+                  Contenido de la Cookie asignada:
+                </label>
+                <textarea
+                  rows={5}
+                  value={editCookieText}
+                  onChange={(e) => setEditCookieText(e.target.value)}
+                  placeholder="NetflixId=...; SecureNetflixId=..."
+                  required
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded p-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-[#E50914] resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPass(null)}
+                  className="px-4 py-2 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold rounded bg-[#E50914] hover:bg-[#b80710] text-white cursor-pointer transition shadow-md flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Guardar Cookie para este Usuario</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

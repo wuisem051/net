@@ -222,6 +222,28 @@ export async function createPass({ code, durationMinutes = 60, assignedCookie = 
 }
 
 /**
+ * Actualizar la cookie asignada o datos de un pase específico
+ */
+export async function updatePassCookie(code, newCookie) {
+  const cleanCode = code.trim().toUpperCase();
+  try {
+    const passRef = doc(db, PASS_COLLECTION, cleanCode);
+    await updateDoc(passRef, {
+      assignedCookie: newCookie,
+      updatedAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.warn("Actualizando cookie en fallback local:", err.message);
+  }
+
+  const local = getLocalPasses();
+  if (local[cleanCode]) {
+    local[cleanCode].assignedCookie = newCookie;
+    saveLocalPasses(local);
+  }
+}
+
+/**
  * Obtener cookies del pool interno
  */
 export async function getCookiePool() {
