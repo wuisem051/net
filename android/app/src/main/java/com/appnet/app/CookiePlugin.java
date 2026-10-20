@@ -122,8 +122,8 @@ public class CookiePlugin extends Plugin {
                     settings.setAllowContentAccess(true);
                     settings.setMediaPlaybackRequiresUserGesture(false);
 
-                    // User Agent de Escritorio (Windows Chrome) para que Netflix NO muestre el cartel móvil "Usa la app de Netflix"
-                    settings.setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
+                    // User Agent moderno de ChromeOS / Linux x86_64 compatible con Widevine CDM
+                    settings.setUserAgentString("Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
 
                     // 4. Habilitar CookieManager explícitamente para este WebView
                     final CookieManager cookieManager = CookieManager.getInstance();
@@ -159,7 +159,24 @@ public class CookiePlugin extends Plugin {
                         }
                     });
 
-                    netflixWebView.setWebChromeClient(new WebChromeClient());
+                    // Autorizar automáticamente permisos de contenido protegido DRM (Widevine) y medios
+                    netflixWebView.setWebChromeClient(new WebChromeClient() {
+                        @Override
+                        public void onPermissionRequest(final android.webkit.PermissionRequest request) {
+                            activity.runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        // Conceder todos los permisos solicitados (RESOURCE_PROTECTED_MEDIA_ID, AUDIO, VIDEO)
+                                        request.grant(request.getResources());
+                                        Log.d(TAG, "DRM / Media permissions granted: " + java.util.Arrays.toString(request.getResources()));
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error granting media permissions", e);
+                                    }
+                                }
+                            });
+                        }
+                    });
                     rootLayout.addView(netflixWebView);
 
                     // 6. Barra flotante con temporizador
