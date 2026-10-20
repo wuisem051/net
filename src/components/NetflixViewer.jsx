@@ -8,8 +8,12 @@ import {
   CreditCard,
   ExternalLink,
   AlertTriangle,
-  Wifi
+  Wifi,
+  CheckCircle2,
+  Loader2,
+  XCircle
 } from 'lucide-react';
+import { injectCookies, clearCookies } from '../services/cookiePlugin';
 
 export default function NetflixViewer({
   sessionData,
@@ -20,6 +24,7 @@ export default function NetflixViewer({
   const [launched, setLaunched] = useState(false);
   const [showExpiredOverlay, setShowExpiredOverlay] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [injectStatus, setInjectStatus] = useState('idle'); // 'idle' | 'injecting' | 'success' | 'failed' | 'web'
   const launchWindowRef = useRef(null);
 
   // Cuando expira: cerrar ventana de Netflix si está abierta y mostrar bloqueo
@@ -30,6 +35,8 @@ export default function NetflixViewer({
       if (launchWindowRef.current && !launchWindowRef.current.closed) {
         try { launchWindowRef.current.close(); } catch (_) {}
       }
+      // Limpiar cookies cuando expira la sesión
+      clearCookies('https://www.netflix.com').catch(() => {});
     }
   }, [isExpired]);
 
@@ -44,9 +51,36 @@ export default function NetflixViewer({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleLaunchNetflix = () => {
+  const handleLaunchNetflix = async () => {
+    const cookieString = sessionData?.assignedCookie || '';
+    const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+
+    if (cookieString && isNative) {
+      // APK: inyectar cookies nativas ANTES de navegar
+      setInjectStatus('injecting');
+      try {
+        const result = await injectCookies(cookieString, 'https://www.netflix.com');
+        if (result.success) {
+          setInjectStatus('success');
+          // Breve pausa para que el usuario vea el check verde
+          await new Promise(r => setTimeout(r, 800));
+        } else {
+          setInjectStatus('failed');
+          await new Promise(r => setTimeout(r, 600));
+        }
+      } catch (err) {
+        console.error('[NetflixViewer] Error inyectando cookies:', err);
+        setInjectStatus('failed');
+        await new Promise(r => setTimeout(r, 600));
+      }
+    } else if (!isNative) {
+      setInjectStatus('web');
+    }
+
     setLaunched(true);
-    // Abre Netflix en el WebView de Android (mismo contexto) o en nueva pestaña del navegador
+    setInjectStatus('idle');
+
+    // Navegar a Netflix (en APK las cookies ya están inyectadas en el WebView)
     const win = window.open('https://www.netflix.com', '_blank');
     if (win) {
       launchWindowRef.current = win;
@@ -55,6 +89,13 @@ export default function NetflixViewer({
       window.location.href = 'https://www.netflix.com';
     }
   };
+
+  const handleLogout = async () => {
+    // Limpiar cookies al cerrar sesión voluntariamente
+    await clearCookies('https://www.netflix.com').catch(() => {});
+    onLogout();
+  };
+
 
   const timerColor = isExpired
     ? 'text-red-400 border-red-500/60 bg-red-950/80'
@@ -79,7 +120,7 @@ export default function NetflixViewer({
 
         {/* Salir */}
         <button
-          onClick={onLogout}
+          onClick={handleLogout}
           title="Cerrar sesión"
           className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-3 py-1.5 rounded-full transition cursor-pointer"
         >
@@ -133,20 +174,50 @@ export default function NetflixViewer({
 
           {/* Botón lanzar Netflix */}
           <div className="px-5 pb-6 space-y-3">
+            {/* Estado de inyección de cookies */}
+            {injectStatus === 'injecting' && (
+              <div className="flex items-center justify-center gap-2 py-2 text-xs text-amber-300 font-mono">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Aplicando sesión VIP...</span>
+              </div>
+            )}
+            {injectStatus === 'success' && (
+              <div className="flex items-center justify-center gap-2 py-2 text-xs text-emerald-400 font-mono">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Sesión lista — abriendo Netflix</span>
+              </div>
+            )}
+            {injectStatus === 'failed' && (
+              <div className="flex items-center justify-center gap-2 py-2 text-xs text-amber-400 font-mono">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Abriendo sin cookies (revisar pool)</span>
+              </div>
+            )}
+            {injectStatus === 'web' && (
+              <div className="flex items-center justify-center gap-2 py-2 text-xs text-zinc-400 font-mono">
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Inyección solo disponible en APK</span>
+              </div>
+            )}
+
             {!launched ? (
               <button
                 onClick={handleLaunchNetflix}
-                disabled={isExpired}
+                disabled={isExpired || injectStatus === 'injecting'}
                 className="w-full bg-[#E50914] hover:bg-[#cc0812] disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 text-base transition-all duration-200 shadow-lg shadow-red-900/40 cursor-pointer disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Play className="w-5 h-5 fill-white" />
-                <span>Abrir Netflix Ahora</span>
-                <ExternalLink className="w-4 h-4 opacity-70" />
+                {injectStatus === 'injecting' ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Play className="w-5 h-5 fill-white" />
+                )}
+                <span>{injectStatus === 'injecting' ? 'Preparando sesión...' : 'Abrir Netflix Ahora'}</span>
+                {injectStatus !== 'injecting' && <ExternalLink className="w-4 h-4 opacity-70" />}
               </button>
             ) : (
               <button
                 onClick={handleLaunchNetflix}
-                disabled={isExpired}
+                disabled={isExpired || injectStatus === 'injecting'}
                 className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2.5 text-sm transition cursor-pointer disabled:cursor-not-allowed"
               >
                 <Wifi className="w-4 h-4" />
@@ -193,7 +264,7 @@ export default function NetflixViewer({
               </button>
 
               <button
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-2.5 px-4 rounded-xl text-sm transition cursor-pointer"
               >
                 Ingresar otro código VIP
