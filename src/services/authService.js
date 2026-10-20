@@ -188,6 +188,13 @@ export async function getAllPasses() {
     const snap = await getDocs(collection(db, PASS_COLLECTION));
     if (!snap.empty) {
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } else {
+      // Si Firestore está vacío, inicializar los pases iniciales en Firestore
+      const defaultEntries = Object.values(DEFAULT_DEMO_PASSES);
+      for (const p of defaultEntries) {
+        await setDoc(doc(db, PASS_COLLECTION, p.code), p);
+      }
+      return defaultEntries;
     }
   } catch (err) {
     console.warn("Fallback local para lista de pases:", err.message);
@@ -212,7 +219,7 @@ export async function createPass({ code, durationMinutes = 60, assignedCookie = 
   };
 
   try {
-    await setDoc(doc(db, PASS_COLLECTION, cleanCode), payload);
+    await setDoc(doc(db, PASS_COLLECTION, cleanCode), payload, { merge: true });
   } catch (err) {
     console.warn("Guardando pase en fallback local:", err.message);
   }
@@ -228,12 +235,16 @@ export async function createPass({ code, durationMinutes = 60, assignedCookie = 
  */
 export async function updatePassCookie(code, newCookie) {
   const cleanCode = code.trim().toUpperCase();
+  const payload = {
+    code: cleanCode,
+    assignedCookie: newCookie,
+    updatedAt: Date.now()
+  };
+
   try {
     const passRef = doc(db, PASS_COLLECTION, cleanCode);
-    await updateDoc(passRef, {
-      assignedCookie: newCookie,
-      updatedAt: serverTimestamp()
-    });
+    // Usar setDoc con merge: true para que si el documento no existía aún en Firestore, se cree automáticamente
+    await setDoc(passRef, payload, { merge: true });
   } catch (err) {
     console.warn("Actualizando cookie en fallback local:", err.message);
   }
@@ -241,6 +252,16 @@ export async function updatePassCookie(code, newCookie) {
   const local = getLocalPasses();
   if (local[cleanCode]) {
     local[cleanCode].assignedCookie = newCookie;
+    saveLocalPasses(local);
+  } else {
+    local[cleanCode] = {
+      code: cleanCode,
+      durationMinutes: 60,
+      assignedCookie: newCookie,
+      status: "active",
+      createdAt: Date.now(),
+      firstUsedAt: null
+    };
     saveLocalPasses(local);
   }
 }
