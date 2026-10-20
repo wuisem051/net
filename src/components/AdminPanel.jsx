@@ -165,19 +165,74 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
     }
   };
 
-  // Parsear cookie string → filas [{name, value}]
+  // Detectar y parsear cookie string en cualquier formato → filas [{name, value, domain, path, secure}]
   const parseCookieString = (str) => {
-    if (!str.trim()) return [];
+    if (!str || !str.trim()) return [];
+    const trimmed = str.trim();
+
+    // ── Formato Netscape/TSV (exportado por Cookie-Editor extensión) ──
+    // Columnas: domain \t subdomains \t path \t secure \t expiry \t NAME \t VALUE
+    if (trimmed.includes('\t')) {
+      return trimmed
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map(line => {
+          const parts = line.split('\t');
+          if (parts.length >= 7) {
+            return {
+              name: parts[5]?.trim() || '',
+              value: parts[6]?.trim() || '',
+              domain: parts[0]?.trim() || '.netflix.com',
+              path: parts[2]?.trim() || '/',
+              secure: parts[3]?.trim() === 'TRUE'
+            };
+          }
+          return null;
+        })
+        .filter(r => r && r.name);
+    }
+
+    // ── Formato JSON array (Cookie-Editor → Export JSON) ──
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map(c => ({
+          name: c.name || '',
+          value: c.value || '',
+          domain: c.domain || '.netflix.com',
+          path: c.path || '/',
+          secure: c.secure !== false
+        })).filter(r => r.name);
+      }
+    } catch { /* no es JSON */ }
+
+    // ── Formato clásico: nombre=valor; nombre=valor ──
     return str.split(';').map(part => {
       const idx = part.indexOf('=');
-      if (idx === -1) return { name: part.trim(), value: '' };
-      return { name: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim() };
+      if (idx === -1) return { name: part.trim(), value: '', domain: '.netflix.com', path: '/', secure: true };
+      return { name: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim(), domain: '.netflix.com', path: '/', secure: true };
     }).filter(r => r.name);
   };
 
-  // Serializar filas → cookie string
-  const serializeCookieRows = (rows) =>
-    rows.filter(r => r.name.trim()).map(r => `${r.name.trim()}=${r.value}`).join('; ');
+  // Serializar filas → JSON array (para guardar con metadata completa)
+  const serializeCookieRows = (rows) => {
+    const valid = rows.filter(r => r.name && r.name.trim());
+    if (valid.length === 0) return '';
+    return JSON.stringify(valid.map(r => ({
+      name: r.name.trim(),
+      value: r.value || '',
+      domain: r.domain || '.netflix.com',
+      path: r.path || '/',
+      secure: r.secure !== false,
+      httpOnly: false,
+      sameSite: 'None'
+    })));
+  };
+
+  // Preview legible para mostrar en la UI (no se guarda así)
+  const previewCookieRows = (rows) =>
+    rows.filter(r => r.name && r.name.trim()).map(r => `${r.name.trim()}=${r.value}`).join('; ');
 
   const handleOpenEditCookie = (pass) => {
     setEditingPass(pass);
@@ -200,16 +255,31 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
   const handleSaveEditCookie = async (e) => {
     e.preventDefault();
     if (!editingPass) return;
-    let finalCookie = editCookieText.trim();
-    // Si estamos en modo campos, serializar las filas
+    let finalCookie = '';
+    
     if (cookieEditorTab === 'fields') {
+      // Serializar filas como JSON con metadata completa
       finalCookie = serializeCookieRows(cookieRows);
     } else if (cookieEditorTab === 'json') {
-      // Convertir JSON a cookie string
+      // Ya es JSON — validar y normalizar
       try {
         const arr = JSON.parse(editCookieText);
-        if (Array.isArray(arr)) finalCookie = arr.map(c => `${c.name}=${c.value}`).join('; ');
-      } catch { /* usar raw */ }
+        if (Array.isArray(arr)) {
+          finalCookie = JSON.stringify(arr.map(c => ({
+            name: c.name, value: c.value,
+            domain: c.domain || '.netflix.com',
+            path: c.path || '/',
+            secure: c.secure !== false,
+            httpOnly: false, sameSite: 'None'
+          })));
+        } else {
+          finalCookie = editCookieText.trim();
+        }
+      } catch { finalCookie = editCookieText.trim(); }
+    } else {
+      // Raw — parsear primero con el parser universal y serializar como JSON
+      const rows = parseCookieString(editCookieText);
+      finalCookie = rows.length > 0 ? serializeCookieRows(rows) : editCookieText.trim();
     }
     try {
       await updatePassCookie(editingPass.code, finalCookie);

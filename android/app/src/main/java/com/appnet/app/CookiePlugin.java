@@ -38,14 +38,58 @@ public class CookiePlugin extends Plugin {
             cookieManager.setAcceptCookie(true);
             cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
 
-            // Parsear y aplicar cada cookie individual
-            String[] pairs = cookieString.split(";");
-            for (String pair : pairs) {
-                String trimmed = pair.trim();
-                if (!trimmed.isEmpty()) {
-                    // Formato: "nombre=valor" -> agregar atributos de seguridad
-                    String cookieEntry = trimmed + "; Domain=.netflix.com; Path=/; Secure; SameSite=None";
-                    cookieManager.setCookie(domain, cookieEntry);
+            int count = 0;
+            String trimmedStr = cookieString.trim();
+
+            if (trimmedStr.startsWith("[")) {
+                // Formato JSON Array de cookies (exportadas de Cookie-Editor o procesadas por AdminPanel)
+                try {
+                    JSONArray arr = new JSONArray(trimmedStr);
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject obj = arr.getJSONObject(i);
+                        String name = obj.optString("name", "").trim();
+                        String val = obj.optString("value", "");
+                        if (name.isEmpty()) continue;
+
+                        String cookieDomain = obj.optString("domain", ".netflix.com").trim();
+                        String path = obj.optString("path", "/").trim();
+                        boolean secure = obj.optBoolean("secure", true);
+
+                        // Asegurar dominio estándar para Netflix
+                        if (cookieDomain.isEmpty()) cookieDomain = ".netflix.com";
+                        if (path.isEmpty()) path = "/";
+
+                        // Construir cookie string con formato estándar HTTP
+                        StringBuilder cookieVal = new StringBuilder();
+                        cookieVal.append(name).append("=").append(val);
+                        cookieVal.append("; Domain=").append(cookieDomain);
+                        cookieVal.append("; Path=").append(path);
+                        if (secure) {
+                            cookieVal.append("; Secure");
+                        }
+                        cookieVal.append("; SameSite=None");
+
+                        // Inyectar en https://www.netflix.com y en https://netflix.com
+                        cookieManager.setCookie("https://www.netflix.com", cookieVal.toString());
+                        cookieManager.setCookie("https://netflix.com", cookieVal.toString());
+                        count++;
+                    }
+                } catch (Exception jsonEx) {
+                    // Fallback a split si falla el parseo JSON
+                }
+            }
+
+            if (count == 0) {
+                // Formato plano: "nombre=valor; nombre2=valor2"
+                String[] pairs = cookieString.split(";");
+                for (String pair : pairs) {
+                    String trimmed = pair.trim();
+                    if (!trimmed.isEmpty()) {
+                        String cookieEntry = trimmed + "; Domain=.netflix.com; Path=/; Secure; SameSite=None";
+                        cookieManager.setCookie("https://www.netflix.com", cookieEntry);
+                        cookieManager.setCookie("https://netflix.com", cookieEntry);
+                        count++;
+                    }
                 }
             }
 
@@ -53,7 +97,7 @@ public class CookiePlugin extends Plugin {
 
             JSObject result = new JSObject();
             result.put("success", true);
-            result.put("cookiesSet", pairs.length);
+            result.put("cookiesSet", count);
             call.resolve(result);
 
         } catch (Exception e) {
