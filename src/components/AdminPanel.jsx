@@ -52,9 +52,11 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
   const [newCookieLabel, setNewCookieLabel] = useState('');
   const [newCookieData, setNewCookieData] = useState('');
 
-  // Edición directa de Cookie por Pase
+  // Edición directa de Cookie por Pase — estilo Cookie Editor
   const [editingPass, setEditingPass] = useState(null);
   const [editCookieText, setEditCookieText] = useState('');
+  const [cookieRows, setCookieRows] = useState([]);
+  const [cookieEditorTab, setCookieEditorTab] = useState('fields'); // 'fields' | 'json' | 'raw'
 
   const loadAllData = async () => {
     setLoading(true);
@@ -163,21 +165,60 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
     }
   };
 
+  // Parsear cookie string → filas [{name, value}]
+  const parseCookieString = (str) => {
+    if (!str.trim()) return [];
+    return str.split(';').map(part => {
+      const idx = part.indexOf('=');
+      if (idx === -1) return { name: part.trim(), value: '' };
+      return { name: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim() };
+    }).filter(r => r.name);
+  };
+
+  // Serializar filas → cookie string
+  const serializeCookieRows = (rows) =>
+    rows.filter(r => r.name.trim()).map(r => `${r.name.trim()}=${r.value}`).join('; ');
+
   const handleOpenEditCookie = (pass) => {
     setEditingPass(pass);
-    setEditCookieText(pass.assignedCookie || '');
+    const raw = pass.assignedCookie || '';
+    setEditCookieText(raw);
+    // Intentar parsear como JSON array primero
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setCookieRows(parsed.map(c => ({ name: c.name || '', value: c.value || '' })));
+      } else {
+        setCookieRows(parseCookieString(raw));
+      }
+    } catch {
+      setCookieRows(parseCookieString(raw));
+    }
+    setCookieEditorTab('fields');
   };
 
   const handleSaveEditCookie = async (e) => {
     e.preventDefault();
     if (!editingPass) return;
+    let finalCookie = editCookieText.trim();
+    // Si estamos en modo campos, serializar las filas
+    if (cookieEditorTab === 'fields') {
+      finalCookie = serializeCookieRows(cookieRows);
+    } else if (cookieEditorTab === 'json') {
+      // Convertir JSON a cookie string
+      try {
+        const arr = JSON.parse(editCookieText);
+        if (Array.isArray(arr)) finalCookie = arr.map(c => `${c.name}=${c.value}`).join('; ');
+      } catch { /* usar raw */ }
+    }
     try {
-      await updatePassCookie(editingPass.code, editCookieText.trim());
+      await updatePassCookie(editingPass.code, finalCookie);
       setEditingPass(null);
       setEditCookieText('');
+      setCookieRows([]);
       await loadAllData();
     } catch (err) {
-      alert("Error al actualizar la cookie: " + err.message);
+      alert('Error al actualizar la cookie: ' + err.message);
     }
   };
 
@@ -690,81 +731,181 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
         )}
       </div>
 
-      {/* MODAL PARA EDITAR COOKIE DE UN PASE VIP ESPECÍFICO */}
+      {/* ═══ COOKIE EDITOR — estilo Cookie Editor Extension ═══ */}
       {editingPass && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-xl w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between mb-4 border-b border-zinc-800/80 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <h3 className="text-base font-bold text-white">
-                  Editar Cookie de la Licencia: <span className="text-[#E50914] font-mono">{editingPass.code}</span>
-                </h3>
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 overflow-y-auto">
+          <div className="max-w-2xl w-full bg-zinc-950 border border-zinc-700/80 rounded-2xl shadow-2xl my-4">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/60 rounded-t-2xl">
+              <div className="flex items-center gap-3">
+                <Cookie className="w-4 h-4 text-amber-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Cookie Editor</h3>
+                  <p className="text-[11px] text-zinc-400 font-mono">Licencia: <span className="text-[#E50914]">{editingPass.code}</span></p>
+                </div>
               </div>
-              <button
-                onClick={() => setEditingPass(null)}
-                className="text-zinc-500 hover:text-white cursor-pointer"
-              >
+              <button onClick={() => setEditingPass(null)} className="text-zinc-500 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
-              Modifica la cookie asociada a esta sesión VIP. Cuando el usuario acceda con este código, el sistema utilizará esta sesión actualizada.
-            </p>
+            <div className="p-5">
+              {/* Tabs */}
+              <div className="flex gap-1 mb-4 bg-zinc-900 p-1 rounded-lg">
+                {[['fields', '⚙ Campos'], ['json', '{ } JSON'], ['raw', '≡ Raw']].map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => {
+                      // Sync data between tabs
+                      if (tab === 'json' && cookieEditorTab === 'fields') {
+                        const jsonArr = cookieRows.filter(r => r.name).map(r => ({ name: r.name, value: r.value, domain: '.netflix.com', path: '/', secure: true, httpOnly: true }));
+                        setEditCookieText(JSON.stringify(jsonArr, null, 2));
+                      } else if (tab === 'raw' && cookieEditorTab === 'fields') {
+                        setEditCookieText(serializeCookieRows(cookieRows));
+                      } else if (tab === 'fields' && cookieEditorTab !== 'fields') {
+                        try {
+                          const parsed = JSON.parse(editCookieText);
+                          if (Array.isArray(parsed)) setCookieRows(parsed.map(c => ({ name: c.name || '', value: c.value || '' })));
+                          else setCookieRows(parseCookieString(editCookieText));
+                        } catch { setCookieRows(parseCookieString(editCookieText)); }
+                      }
+                      setCookieEditorTab(tab);
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer ${
+                      cookieEditorTab === tab ? 'bg-[#E50914] text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-            <form onSubmit={handleSaveEditCookie} className="space-y-4">
-              <div>
-                <label className="block text-xs text-zinc-300 font-semibold mb-1">
-                  Seleccionar rápidamente desde el Pool de Cookies:
-                </label>
+              {/* Seleccionar del Pool */}
+              <div className="mb-4 p-3 bg-zinc-900/60 border border-zinc-800 rounded-lg">
+                <label className="block text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-1.5">⚡ Cargar desde Pool de Cuentas</label>
                 <select
                   onChange={(e) => {
-                    if (e.target.value) setEditCookieText(e.target.value);
+                    if (!e.target.value) return;
+                    const raw = e.target.value;
+                    try {
+                      const arr = JSON.parse(raw);
+                      if (Array.isArray(arr)) { setCookieRows(arr.map(c => ({ name: c.name || '', value: c.value || '' }))); setEditCookieText(raw); }
+                      else { setCookieRows(parseCookieString(raw)); setEditCookieText(raw); }
+                    } catch { setCookieRows(parseCookieString(raw)); setEditCookieText(raw); }
                   }}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-[#E50914] mb-3"
                   defaultValue=""
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-[#E50914]"
                 >
-                  <option value="" disabled>-- Elegir una cuenta activa del pool --</option>
+                  <option value="" disabled>-- Seleccionar cuenta activa del pool --</option>
                   {cookiesPool.map((c) => (
-                    <option key={c.id} value={c.cookieData}>
-                      {c.label} ({c.cookieData.substring(0, 25)}...)
-                    </option>
+                    <option key={c.id} value={c.cookieData}>{c.label}</option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs text-zinc-300 font-semibold mb-1">
-                  Contenido de la Cookie asignada:
-                </label>
-                <textarea
-                  rows={5}
-                  value={editCookieText}
-                  onChange={(e) => setEditCookieText(e.target.value)}
-                  placeholder="NetflixId=...; SecureNetflixId=..."
-                  required
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded p-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-[#E50914] resize-none"
-                />
-              </div>
+              {/* ── MODO CAMPOS (estilo Cookie Editor) ── */}
+              {cookieEditorTab === 'fields' && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold px-1">
+                    <span>Nombre</span><span>Valor</span><span></span>
+                  </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {cookieRows.map((row, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={(e) => { const r = [...cookieRows]; r[i] = { ...r[i], name: e.target.value }; setCookieRows(r); }}
+                          placeholder="Nombre"
+                          className="bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-[#E50914] w-full"
+                        />
+                        <input
+                          type="text"
+                          value={row.value}
+                          onChange={(e) => { const r = [...cookieRows]; r[i] = { ...r[i], value: e.target.value }; setCookieRows(r); }}
+                          placeholder="Valor"
+                          className="bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs font-mono text-zinc-300 focus:outline-none focus:border-[#E50914] w-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCookieRows(cookieRows.filter((_, idx) => idx !== i))}
+                          className="text-red-500 hover:text-red-300 cursor-pointer p-1"
+                          title="Eliminar"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCookieRows([...cookieRows, { name: '', value: '' }])}
+                    className="w-full border border-dashed border-zinc-700 hover:border-amber-500/60 text-zinc-500 hover:text-amber-400 text-xs py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar Cookie
+                  </button>
+
+                  {/* Preview */}
+                  {cookieRows.filter(r => r.name).length > 0 && (
+                    <div className="mt-2 p-2.5 bg-zinc-900/80 border border-zinc-800 rounded-lg">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-1">Vista previa del string final:</p>
+                      <p className="text-[11px] font-mono text-zinc-300 break-all">{serializeCookieRows(cookieRows)}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── MODO JSON ── */}
+              {cookieEditorTab === 'json' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-zinc-400">Pega el JSON exportado por <strong className="text-white">Cookie Editor</strong> (formato array de objetos).</p>
+                  <textarea
+                    rows={10}
+                    value={editCookieText}
+                    onChange={(e) => setEditCookieText(e.target.value)}
+                    placeholder={`[\n  {\n    "name": "NetflixId",\n    "value": "v%3D2%26...",\n    "domain": ".netflix.com",\n    "path": "/",\n    "secure": true\n  }\n]`}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded p-3 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-[#E50914] resize-none"
+                  />
+                </div>
+              )}
+
+              {/* ── MODO RAW ── */}
+              {cookieEditorTab === 'raw' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-zinc-400">Pega el header de cookie en formato clásico <code className="text-amber-300">Nombre=Valor; ...</code></p>
+                  <textarea
+                    rows={6}
+                    value={editCookieText}
+                    onChange={(e) => setEditCookieText(e.target.value)}
+                    placeholder="NetflixId=v%3D2%26ct%3DBQAOAA...; SecureNetflixId=v%3D2%26mac%3DAQ..."
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded p-3 text-[11px] font-mono text-zinc-300 focus:outline-none focus:border-[#E50914] resize-none"
+                  />
+                </div>
+              )}
+
+              {/* Acciones */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800 mt-4">
                 <button
                   type="button"
                   onClick={() => setEditingPass(null)}
-                  className="px-4 py-2 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer transition"
+                  className="px-4 py-2 text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer transition"
                 >
                   Cancelar
                 </button>
                 <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold rounded bg-[#E50914] hover:bg-[#b80710] text-white cursor-pointer transition shadow-md flex items-center gap-1.5"
+                  type="button"
+                  onClick={handleSaveEditCookie}
+                  className="px-5 py-2 text-xs font-bold rounded-lg bg-[#E50914] hover:bg-[#b80710] text-white cursor-pointer transition shadow-md flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Guardar Cookie para este Usuario</span>
+                  <span>Guardar Cookie VIP</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,15 @@
-﻿# 📋 CHANGELOG — APP NET VIP
+# 📋 CHANGELOG — APP NET VIP
 
 Historial de versiones y actualizaciones del sistema.
+
+---
+
+## [v1.2] — 2026-10-20
+
+### ✨ Novedades
+- **Editor de Cookies estilo Cookie-Editor (Extensión):** Modal interactivo con 3 pestañas (`⚙ Campos`, `{ } JSON`, `≡ Raw`) para editar, importar o exportar cookies de cada cuenta VIP individualmente.
+- **Flujo Directo con Netflix:** Al ingresar código VIP, se activa la pantalla de sesión VIP con contador flotante y botón de acceso directo a Netflix (`netflix.com`).
+- **Bloqueo y Cierre automático:** Overlay de expiración cuando se agota el tiempo asignado a la licencia.
 
 ---
 
@@ -42,3 +51,4 @@ Historial de versiones y actualizaciones del sistema.
 - [ ] WhatsApp integrado con número dinámico desde el panel admin.
 - [ ] Splash screen con ícono de la app.
 - [ ] Versión iOS con Capacitor.
+
