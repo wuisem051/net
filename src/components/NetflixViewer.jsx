@@ -55,40 +55,47 @@ export default function NetflixViewer({
     const cookieString = sessionData?.assignedCookie || '';
     const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
 
-    if (cookieString && isNative) {
-      // APK: inyectar cookies nativas ANTES de navegar
-      setInjectStatus('injecting');
-      try {
-        const result = await injectCookies(cookieString, 'https://www.netflix.com');
-        if (result.success) {
-          setInjectStatus('success');
-          // Breve pausa para que el usuario vea el check verde
-          await new Promise(r => setTimeout(r, 800));
-        } else {
+    if (isNative) {
+      // ─── APK / WebView nativo ────────────────────────────────
+      if (cookieString) {
+        setInjectStatus('injecting');
+        try {
+          const result = await injectCookies(cookieString, 'https://www.netflix.com');
+          if (result.success) {
+            setInjectStatus('success');
+            // Pausa breve para mostrar el check verde al usuario
+            await new Promise(r => setTimeout(r, 700));
+          } else {
+            setInjectStatus('failed');
+            await new Promise(r => setTimeout(r, 500));
+          }
+        } catch (err) {
+          console.error('[NetflixViewer] Error inyectando cookies:', err);
           setInjectStatus('failed');
-          await new Promise(r => setTimeout(r, 600));
+          await new Promise(r => setTimeout(r, 500));
         }
-      } catch (err) {
-        console.error('[NetflixViewer] Error inyectando cookies:', err);
-        setInjectStatus('failed');
-        await new Promise(r => setTimeout(r, 600));
       }
-    } else if (!isNative) {
-      setInjectStatus('web');
-    }
 
-    setLaunched(true);
-    setInjectStatus('idle');
+      setLaunched(true);
+      setInjectStatus('idle');
 
-    // Navegar a Netflix (en APK las cookies ya están inyectadas en el WebView)
-    const win = window.open('https://www.netflix.com', '_blank');
-    if (win) {
-      launchWindowRef.current = win;
-    } else {
-      // Fallback para APK/WebView: navegar en la misma ventana
+      // ✅ CLAVE: navegar en el MISMO WebView donde las cookies fueron inyectadas
+      // NO usar window.open() — eso abre Chrome externo con cookie store distinto
       window.location.href = 'https://www.netflix.com';
+
+    } else {
+      // ─── Navegador web (desarrollo / versión web) ─────────────
+      // No se pueden inyectar cookies cross-domain en el navegador
+      setInjectStatus('web');
+      setLaunched(true);
+      await new Promise(r => setTimeout(r, 400));
+      setInjectStatus('idle');
+
+      // En web: abre en nueva pestaña sin autenticación automática
+      window.open('https://www.netflix.com', '_blank');
     }
   };
+
 
   const handleLogout = async () => {
     // Limpiar cookies al cerrar sesión voluntariamente
