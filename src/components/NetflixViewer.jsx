@@ -13,7 +13,7 @@ import {
   Loader2,
   XCircle
 } from 'lucide-react';
-import { injectCookies, clearCookies } from '../services/cookiePlugin';
+import { injectCookies, clearCookies, openNativeNetflixView, closeNativeNetflixView } from '../services/cookiePlugin';
 
 export default function NetflixViewer({
   sessionData,
@@ -31,11 +31,12 @@ export default function NetflixViewer({
   useEffect(() => {
     if (isExpired) {
       setShowExpiredOverlay(true);
-      // Intentar cerrar la ventana externa si se abrió
+      // Cerrar visor nativo si está en APK
+      closeNativeNetflixView().catch(() => {});
+      // Intentar cerrar la ventana externa si se abrió en web
       if (launchWindowRef.current && !launchWindowRef.current.closed) {
         try { launchWindowRef.current.close(); } catch (_) {}
       }
-      // Limpiar cookies cuando expira la sesión
       clearCookies('https://www.netflix.com').catch(() => {});
     }
   }, [isExpired]);
@@ -56,49 +57,44 @@ export default function NetflixViewer({
     const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
 
     if (isNative) {
-      // ─── APK / WebView nativo ────────────────────────────────
-      if (cookieString) {
-        setInjectStatus('injecting');
-        try {
-          const result = await injectCookies(cookieString, 'https://www.netflix.com');
-          if (result.success) {
-            setInjectStatus('success');
-            // Pausa breve para mostrar el check verde al usuario
-            await new Promise(r => setTimeout(r, 700));
-          } else {
-            setInjectStatus('failed');
-            await new Promise(r => setTimeout(r, 500));
-          }
-        } catch (err) {
-          console.error('[NetflixViewer] Error inyectando cookies:', err);
+      // ─── APK / WebView nativo en Pantalla Completa con Temporizador Flotante ───
+      setInjectStatus('injecting');
+      try {
+        const result = await openNativeNetflixView({
+          cookieString,
+          durationSeconds: remainingSeconds > 0 ? remainingSeconds : 3600,
+          sessionCode: sessionData?.code || 'VIP'
+        });
+
+        if (result.success) {
+          setInjectStatus('success');
+          setLaunched(true);
+          setTimeout(() => setInjectStatus('idle'), 1000);
+        } else {
           setInjectStatus('failed');
-          await new Promise(r => setTimeout(r, 500));
+          setTimeout(() => setInjectStatus('idle'), 2000);
         }
+      } catch (err) {
+        console.error('[NetflixViewer] Error abriendo visor nativo:', err);
+        setInjectStatus('failed');
+        setTimeout(() => setInjectStatus('idle'), 2000);
       }
-
-      setLaunched(true);
-      setInjectStatus('idle');
-
-      // ✅ CLAVE: navegar en el MISMO WebView donde las cookies fueron inyectadas
-      // NO usar window.open() — eso abre Chrome externo con cookie store distinto
-      window.location.href = 'https://www.netflix.com';
 
     } else {
       // ─── Navegador web (desarrollo / versión web) ─────────────
-      // No se pueden inyectar cookies cross-domain en el navegador
       setInjectStatus('web');
       setLaunched(true);
       await new Promise(r => setTimeout(r, 400));
       setInjectStatus('idle');
 
-      // En web: abre en nueva pestaña sin autenticación automática
+      // En web: abre en nueva pestaña
       window.open('https://www.netflix.com', '_blank');
     }
   };
 
-
   const handleLogout = async () => {
-    // Limpiar cookies al cerrar sesión voluntariamente
+    // Cerrar visor nativo y limpiar cookies
+    await closeNativeNetflixView().catch(() => {});
     await clearCookies('https://www.netflix.com').catch(() => {});
     onLogout();
   };

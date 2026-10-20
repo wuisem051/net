@@ -84,3 +84,47 @@ export async function clearCookies(domain = 'https://www.netflix.com') {
   }
   return { success: false, reason: 'web_environment' };
 }
+
+/**
+ * Abre el visor nativo de Netflix en pantalla completa con temporizador flotante.
+ * @param {Object} options
+ * @param {string} options.cookieString - Cookie serializada
+ * @param {number} options.durationSeconds - Segundos restantes
+ * @param {string} options.sessionCode - Código de pase VIP
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function openNativeNetflixView({ cookieString, durationSeconds, sessionCode }) {
+  if (isCapacitor) {
+    try {
+      const { CookiePlugin } = window.Capacitor.Plugins;
+      if (!CookiePlugin) return { success: false };
+      return await CookiePlugin.openNetflixView({
+        cookieString: cookieString || '',
+        durationSeconds: durationSeconds || 3600,
+        sessionCode: sessionCode || 'VIP'
+      });
+    } catch (err) {
+      console.error('[CookiePlugin] Error abriendo visor nativo:', err);
+      return { success: false, error: err.message };
+    }
+  }
+  return { success: false, reason: 'web_environment' };
+}
+
+/**
+ * Cierra el visor nativo de Netflix y limpia cookies.
+ */
+export async function closeNativeNetflixView() {
+  if (isCapacitor) {
+    try {
+      const { CookiePlugin } = window.Capacitor.Plugins;
+      if (!CookiePlugin) return { success: false };
+      return await CookiePlugin.closeNetflixView();
+    } catch (err) {
+      console.error('[CookiePlugin] Error cerrando visor nativo:', err);
+      return { success: false };
+    }
+  }
+  return { success: false };
+}
+
