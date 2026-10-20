@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pases de acceso VIP
+    match /access_passes/{passId} {
+      allow read, write: if true;
+    }
+    // Pool de cookies compartidas
+    match /cookie_pool/{cookieId} {
+      allow read, write: if true;
+    }
+    // Configuración del Home y Planes
+    match /app_config/{configId} {
+      allow read, write: if true;
+    }
+    // Fallback general para desarrollo
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
