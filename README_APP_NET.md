@@ -1,4 +1,4 @@
-# 🎬 App Net — Plataforma de Gestión y Acceso VIP a Netflix
+# 🎬 Netflix Plus (v1.1) — Plataforma de Gestión y Acceso VIP a Netflix
 
 > **Documento de Arquitectura, Referencia Técnica y Registro de Actualizaciones**  
 > Última actualización: Octubre 2026
@@ -7,7 +7,7 @@
 
 ## 📌 1. ¿De qué trata la aplicación?
 
-**App Net** es una plataforma híbrida (Web + APK Nativo Android vía Capacitor) desarrollada para comercializar y gestionar accesos VIP temporales a Netflix sin necesidad de compartir contraseñas ni correos con los clientes finales.
+**Netflix Plus** es una plataforma híbrida (Web + APK Nativo Android vía Capacitor) desarrollada para comercializar y gestionar accesos VIP temporales a Netflix sin necesidad de compartir contraseñas ni correos con los clientes finales.
 
 ### Características Clave:
 1. **Acceso por Licencias / Pases VIP**: Los usuarios adquieren códigos (ej. `VIP-PREMIUM-2026`, `TEST`) con una duración configurada en minutos (ej. 60 min, 1440 min = 24h).
@@ -17,16 +17,18 @@
 3. **Visor Nativo Integrado (In-App WebView)**:
    - Netflix carga **dentro de la misma app** a pantalla completa (sin salirse a Chrome externo ni navegadores ajenos).
    - Muestra un **banner flotante superior** con el temporizador regresivo en vivo y un botón `✕ Salir`.
-4. **Cierre Automático y Purga de Sesión**:
+4. **Reproducción de Video DRM Widevine Habilitada**:
+   - Concesión automática de permisos de medios protegidos (`RESOURCE_PROTECTED_MEDIA_ID`) para reproducir películas y series sin bloqueos DRM.
+5. **Cierre Automático y Purga de Sesión**:
    - Al expirar el tiempo de la licencia (o cuando el usuario presiona salir), el visor nativo se cierra automáticamente y **se borran todas las cookies** del sistema para proteger la cuenta.
-5. **Panel de Administración Completo (`/admin` o PIN `2026`)**:
+6. **Panel de Administración Completo (`/admin` o PIN `2026`)**:
    - Generación de licencias con duración personalizada.
    - **Editor de Cookies integrado** compatible con:
-     - Formato Netscape / TSV (copiado directo de la extensión Cookie-Editor).
+     - Formato Netscape / TSV (copiado directo de la extensión Cookie-Editor con tabulaciones).
      - Formato JSON array exportado por Cookie-Editor.
      - Pares clásicos `nombre=valor;`.
    - Pool de cuentas compartidas o asignación individual.
-   - Sincronización en tiempo real con **Firebase Firestore**.
+   - Sincronización en tiempo real con **Firebase Firestore** (`setDoc` con `{ merge: true }`).
    - Personalización visual de la página de inicio (landing) y planes de precios.
 
 ---
@@ -38,8 +40,9 @@ APP NET/
 ├── android/                                    # Proyecto nativo Android (Capacitor)
 │   ├── app/src/main/java/com/appnet/app/
 │   │   ├── MainActivity.java                   # Punto de entrada de la actividad Android
-│   │   └── CookiePlugin.java                   # 🌟 Plugin nativo: inyección de cookies, WebView full-screen con temporizador flotante
-│   └── build/outputs/apk/debug/app-debug.apk   # APK compilado listo para instalar
+│   │   └── CookiePlugin.java                   # 🌟 Plugin nativo: inyección de cookies, WebView full-screen, soporte DRM y temporizador
+│   ├── app/src/main/res/values/strings.xml     # Configuración del nombre: "Netflix Plus"
+│   └── build/outputs/apk/debug/app-debug.apk   # APK compilado
 │
 ├── src/                                        # Frontend React + Vite + TailwindCSS
 │   ├── components/
@@ -56,14 +59,15 @@ APP NET/
 │
 ├── firestore.rules                             # Reglas de seguridad de base de datos Firestore
 ├── firebase.json                               # Configuración de Firebase
-├── capacitor.config.json                       # Configuración de Capacitor (com.appnet.app)
+├── capacitor.config.json                       # Configuración de Capacitor (appName: "Netflix Plus")
+├── Netflix-Plus-v1.1.apk                       # 📦 APK de distribución listo para instalar
 ├── app-debug.apk                               # Acceso directo al último APK generado
 └── README_APP_NET.md                           # Este documento de referencia y changelog
 ```
 
 ---
 
-## ⚡ 3. Flujo Técnico de Inyección y Visor (Android Native)
+## ⚡ 3. Flujo Técnico de Inyección, DRM y Visor (Android Native)
 
 ```mermaid
 sequenceDiagram
@@ -78,13 +82,18 @@ sequenceDiagram
     User->>UI: Ingresa código VIP y presiona "Abrir Netflix Ahora"
     UI->>Bridge: openNativeNetflixView(cookieString, durationSeconds, sessionCode)
     Bridge->>Java: Invoca PluginMethod @openNetflixView
-    Java->>Java: injectCookiesInternal()
+    Java->>Java: injectCookiesInternal() (soporte JSON, TSV/Netscape y key=value)
     Java->>Net: CookieManager.setCookie("https://www.netflix.com", cookie)
     Java->>Net: CookieManager.flush()
     Java->>Java: Crea Dialog Fullscreen + WebView nativo + Banner Flotante
     Java->>Net: webView.loadUrl("https://www.netflix.com/browse")
     Net->>Netflix: Petición HTTPS con cookies VIP inyectadas y Desktop User-Agent
     Netflix-->>User: Carga interfaz autenticada de Netflix 🎬
+    User->>Netflix: Selecciona y reproduce una película
+    Netflix->>Net: Solicita permiso RESOURCE_PROTECTED_MEDIA_ID (Widevine DRM)
+    Net->>Java: onPermissionRequest()
+    Java->>Net: request.grant(request.getResources())
+    Netflix-->>User: ¡Reproducción de video fluida sin error M7701! 🍿
     loop Cada segundo
         Java->>Java: Decrementa remainingSeconds y actualiza TextView flotante
     end
@@ -103,7 +112,7 @@ Tanto en [`AdminPanel.jsx`](file:///e:/APP%20NET/src/components/AdminPanel.jsx) 
 
 1. **Formato Netscape / Tab-Separated Values (TSV)**:
    ```tsv
-   .netflix.com	TRUE	/	TRUE	0	NetflixId	ct%3D...
+   .netflix.com	TRUE	/	TRUE	0	NetflixId	ct%3DBgjHlOvcAxLnA1...
    .netflix.com	TRUE	/	TRUE	0	SecureNetflixId	v%3D3%26...
    ```
 2. **Formato JSON (Cookie-Editor Extension)**:
@@ -125,11 +134,20 @@ Tanto en [`AdminPanel.jsx`](file:///e:/APP%20NET/src/components/AdminPanel.jsx) 
 
 ---
 
-## 📝 5. Historial de Actualizaciones (Changelog de Soluciones)
+## 📝 5. Historial Completo de Actualizaciones (Changelog)
 
-### 🚀 Update v1.4 (Octubre 2026 - Desktop User-Agent)
-- **Problema**: Al inyectar la cookie con éxito, Netflix reconocía la cuenta (`Gérer le compte`), pero mostraba la pantalla bloqueante: *"L'expérience Netflix est meilleure avec l'app"*.
-- **Solución**: Se sustituyó el User-Agent móvil por **Chrome Desktop (Windows 10/11)** en `CookiePlugin.java`. Netflix ahora permite la navegación directa al catálogo y la reproducción sin solicitar la app oficial de la Play Store.
+### 🚀 Update v1.5 (Octubre 2026 - Soporte DRM Widevine y Eliminación del Error M7701)
+- **Problema detectado**: Al intentar reproducir una película o serie, la pantalla se ponía estática con el mensaje: *"Sentimos la interrupción... Visita chrome://settings/content/protectedContent... Código de error M7701-1003"*.
+- **Causa**: El `WebView` de Android bloqueaba silenciosamente la solicitud de identificador de contenido protegido (`RESOURCE_PROTECTED_MEDIA_ID`) requerida por Widevine CDM.
+- **Solución implementada**:
+  - Implementación del callback `onPermissionRequest` en el `WebChromeClient` de `CookiePlugin.java` para aprobar automáticamente las solicitudes de DRM, audio y video.
+  - Actualización del User-Agent a una versión certificada de ChromeOS (`Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) ...`).
+  - Nombre oficial actualizado en `strings.xml` y `capacitor.config.json` a **Netflix Plus**.
+  - Generación del archivo ejecutable **`Netflix-Plus-v1.1.apk`**.
+
+### 🚀 Update v1.4 (Octubre 2026 - Desktop User-Agent contra bloqueo móvil)
+- **Problema**: Al inyectar la cookie con éxito, Netflix reconocía la cuenta (`Gérer le compte`), pero mostraba la pantalla publicitaria bloqueante: *"L'expérience Netflix est meilleure avec l'app"*.
+- **Solución**: Se sustituyó el User-Agent móvil por versión de escritorio en `CookiePlugin.java`. Netflix desbloqueó de inmediato la selección de perfiles y el catálogo completo.
 
 ### 🚀 Update v1.3 (Octubre 2026 - Parser Nativo TSV / Netscape en Android)
 - **Problema**: Las cookies exportadas desde Cookie-Editor en formato texto plano con tabulaciones (`\t`) se guardaban tal cual en Firestore, pero Java solo parseaba JSON o punto y coma, ignorando los valores de `NetflixId`.
@@ -153,7 +171,7 @@ Tanto en [`AdminPanel.jsx`](file:///e:/APP%20NET/src/components/AdminPanel.jsx) 
 
 ## 🛠️ 6. Comandos de Compilación del APK
 
-Para compilar un nuevo APK tras cualquier modificación:
+Para compilar un nuevo APK tras cualquier modificación en el proyecto:
 
 ```powershell
 # 1. Compilar frontend React
@@ -166,6 +184,7 @@ npx cap sync android
 cd android
 .\gradlew assembleDebug
 cd ..
+Copy-Item -Path "android\app\build\outputs\apk\debug\app-debug.apk" -Destination "Netflix-Plus-v1.1.apk" -Force
 Copy-Item -Path "android\app\build\outputs\apk\debug\app-debug.apk" -Destination "app-debug.apk" -Force
 ```
 
