@@ -24,6 +24,10 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Browser;
+import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -159,13 +163,22 @@ public class CookiePlugin extends Plugin {
                         @Override
                         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                             String reqUrl = request.getUrl().toString();
-                            // Navegar internamente dominios de Netflix
+                            if (reqUrl.contains("/watch/")) {
+                                Log.d(TAG, "Watch URL detected: " + reqUrl + ". Launching in certified Widevine player");
+                                launchExternalPlayer(activity, reqUrl);
+                                return true;
+                            }
                             view.loadUrl(reqUrl);
                             return true;
                         }
 
                         @Override
                         public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                            if (url != null && url.contains("/watch/")) {
+                                Log.d(TAG, "Watch URL detected: " + url + ". Launching in certified Widevine player");
+                                launchExternalPlayer(activity, url);
+                                return true;
+                            }
                             view.loadUrl(url);
                             return true;
                         }
@@ -261,6 +274,39 @@ public class CookiePlugin extends Plugin {
                     LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
                     timerParams.setMargins(dpToPx(activity, 8), 0, dpToPx(activity, 8), 0);
                     topBar.addView(timerTextView, timerParams);
+
+                    // Botón Reproductor HD (Navegador/App para saltar DRM E100)
+                    TextView playExtBtn = new TextView(activity);
+                    playExtBtn.setText("▶ Reproducir");
+                    playExtBtn.setTextColor(Color.WHITE);
+                    playExtBtn.setTextSize(12);
+                    playExtBtn.setTypeface(null, Typeface.BOLD);
+
+                    GradientDrawable playBg = new GradientDrawable();
+                    playBg.setColor(Color.parseColor("#E50914"));
+                    playBg.setCornerRadius(dpToPx(activity, 12));
+                    playExtBtn.setBackground(playBg);
+                    playExtBtn.setPadding(dpToPx(activity, 10), dpToPx(activity, 5), dpToPx(activity, 10), dpToPx(activity, 5));
+
+                    playExtBtn.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            try {
+                                String currentUrl = netflixWebView != null ? netflixWebView.getUrl() : "https://www.netflix.com/browse";
+                                if (currentUrl == null || currentUrl.isEmpty()) {
+                                    currentUrl = "https://www.netflix.com/browse";
+                                }
+                                launchExternalPlayer(activity, currentUrl);
+                            } catch (Exception ex) {
+                                Log.e(TAG, "Error launching external player", ex);
+                            }
+                        }
+                    });
+                    topBar.addView(playExtBtn);
+
+                    // Margen entre botones
+                    View spacer = new View(activity);
+                    topBar.addView(spacer, new LinearLayout.LayoutParams(dpToPx(activity, 6), 1));
 
                     // Botón Salir
                     TextView closeBtn = new TextView(activity);
@@ -512,6 +558,45 @@ public class CookiePlugin extends Plugin {
             call.resolve(result);
         } catch (Exception e) {
             call.reject("Error getting cookies: " + e.getMessage());
+        }
+    }
+
+    private void launchExternalPlayer(Context context, String url) {
+        try {
+            if (url == null || url.isEmpty()) {
+                url = "https://www.netflix.com/browse";
+            }
+            Uri targetUri = Uri.parse(url);
+
+            // Obtener cookies actuales
+            CookieManager cookieManager = CookieManager.getInstance();
+            String cookies = cookieManager.getCookie("https://www.netflix.com");
+
+            Intent intent = new Intent(Intent.ACTION_VIEW, targetUri);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            if (cookies != null && !cookies.isEmpty()) {
+                Bundle bundle = new Bundle();
+                bundle.putString("Cookie", cookies);
+                intent.putExtra(Browser.EXTRA_HEADERS, bundle);
+            }
+
+            // Intentar abrir con Google Chrome (soporta Widevine L1/L3 completo)
+            intent.setPackage("com.android.chrome");
+            try {
+                context.startActivity(intent);
+                return;
+            } catch (Exception chromeNotFound) {
+                Log.w(TAG, "Chrome not found, trying general browser intent");
+            }
+
+            // Si Chrome no está, intentar con el navegador por defecto
+            Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, targetUri);
+            fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(fallbackIntent);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to launch external player", e);
         }
     }
 
