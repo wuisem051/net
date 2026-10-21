@@ -122,20 +122,23 @@ public class CookiePlugin extends Plugin {
                     settings.setAllowContentAccess(true);
                     settings.setMediaPlaybackRequiresUserGesture(false);
                     settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                    // Permitir contenido mixto HTTPS/HTTP (necesario para recursos de Netflix)
+                    settings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+                    // Permitir contenido mixto HTTPS/HTTP (necesario para streaming y assets)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                     }
-                    // Aceleracion por hardware para decodificacion de video DRM
+
+                    // Aceleración por hardware para decodificación de video
                     netflixWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                     netflixWebView.setKeepScreenOn(true);
 
-                    // User Agent de Chrome Desktop Windows — da acceso completo a Netflix
-                    // y mayor compatibilidad con Widevine que el User Agent de ChromeOS
+                    // User Agent optimizado: ChromeOS / Android que activa el reproductor web HTML5
+                    // sin exigir módulos de DRM exclusivos de Windows x64
                     settings.setUserAgentString(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                        "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) " +
                         "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/131.0.0.0 Safari/537.36"
+                        "Chrome/130.0.0.0 Safari/537.36"
                     );
 
                     // 4. Habilitar CookieManager explícitamente para este WebView
