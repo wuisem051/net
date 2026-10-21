@@ -333,18 +333,19 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
-          {pricingPlans.map((plan) => (
+        {/* FILA SUPERIOR: 3 PLANES (Prueba, Pase 24H y Membresía Mensual VIP destacada) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {[pricingPlans[0], pricingPlans[1], pricingPlans[4]].map((plan) => (
             <div
               key={plan.id}
               className={`relative rounded-2xl p-7 flex flex-col justify-between transition-all duration-300 ${
                 plan.featured 
-                  ? 'bg-gradient-to-b from-zinc-900 via-zinc-950 to-black border-2 border-[#E50914] shadow-2xl shadow-red-950/50 scale-105 z-10' 
+                  ? 'bg-gradient-to-b from-zinc-900 via-zinc-950 to-black border-2 border-[#E50914] shadow-2xl shadow-red-950/50 md:scale-105 z-10' 
                   : 'bg-zinc-950/80 border border-zinc-800 hover:border-zinc-700'
               }`}
             >
               {plan.badge && (
-                <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md ${
+                <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md whitespace-nowrap ${
                   plan.featured ? 'bg-[#E50914] text-white' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
                 }`}>
                   {plan.badge}
@@ -374,11 +375,56 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
 
               <button
                 onClick={plan.action}
-                className={`w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg ${
+                className={`w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg ${
                   plan.featured 
                     ? 'bg-[#E50914] hover:bg-[#b80710] text-white shadow-red-900/40' 
                     : 'bg-zinc-800 hover:bg-zinc-700 text-white'
                 }`}
+              >
+                <span>{plan.buttonText}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* FILA INFERIOR: 2 PLANES (Pase Semanal 7D y Pase Quincenal 15D) */}
+        <div className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[pricingPlans[2], pricingPlans[3]].map((plan) => (
+            <div
+              key={plan.id}
+              className="relative rounded-2xl p-7 flex flex-col justify-between transition-all duration-300 bg-zinc-950/80 border border-zinc-800 hover:border-zinc-700"
+            >
+              {plan.badge && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md bg-zinc-800 text-amber-300 border border-zinc-700 whitespace-nowrap">
+                  {plan.badge}
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-lg font-bold text-white mb-2">{plan.title}</h3>
+                <div className="flex items-baseline gap-1 mb-1">
+                  <span className="text-4xl font-black text-white">{plan.price}</span>
+                  <span className="text-xs text-zinc-400">USD</span>
+                </div>
+                <p className="text-xs text-amber-400 font-semibold mb-6 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {plan.duration}
+                </p>
+
+                <div className="space-y-3 border-t border-zinc-800/80 pt-5 mb-8 text-xs text-zinc-300">
+                  {plan.features.map((feat, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>{feat}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={plan.action}
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg bg-zinc-800 hover:bg-zinc-700 text-white"
               >
                 <span>{plan.buttonText}</span>
                 <ArrowRight className="w-4 h-4" />
