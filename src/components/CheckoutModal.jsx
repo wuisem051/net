@@ -23,15 +23,34 @@ import { createOrder, getOrderById } from '../services/authService';
 export default function CheckoutModal({
   isOpen,
   onClose,
-  cart,
+  cart: cartProp,
   onUpdateQuantity,
   onRemoveItem,
   onClearCart,
   cryptoWallets = {},
-  onOrderCompleted
+  onOrderCompleted,
+  onGoToLogin
 }) {
   const [step, setStep] = useState('cart'); // 'cart' | 'checkout' | 'success' | 'lookup'
   const [selectedWalletKey, setSelectedWalletKey] = useState('usdt_trc20');
+  const [internalCart, setInternalCart] = useState([]);
+  
+  // Cart unificado: si viene de props usamos ese, si no usamos el interno
+  const cart = cartProp !== undefined ? cartProp : internalCart;
+  const handleUpdateQuantity = onUpdateQuantity || ((id, qty) => {
+    if (qty <= 0) setInternalCart(prev => prev.filter(i => i.id !== id));
+    else setInternalCart(prev => prev.map(i => i.id === id ? { ...i, quantity: qty } : i));
+  });
+  const handleRemoveItem = onRemoveItem || ((id) => setInternalCart(prev => prev.filter(i => i.id !== id)));
+  const handleClearCart = onClearCart || (() => setInternalCart([]));
+
+  // Planes de renovación (para cuando el carrito está vacío o se llega desde NetflixViewer)
+  const renewalPlans = [
+    { id: 'pass_24h', title: 'Pase 24 Horas', price: '$0.99', duration: 'Acceso Completo 1 Día', durationMinutes: 1440 },
+    { id: 'pass_weekly', title: 'Pase Semanal (7 Días)', price: '$2.49', duration: '7 Días de Acceso Continuo', durationMinutes: 10080 },
+    { id: 'pass_biweekly', title: 'Pase Quincenal (15 Días)', price: '$3.49', duration: '15 Días de Acceso VIP', durationMinutes: 21600 },
+    { id: 'monthly_vip', title: 'Membresía Mensual VIP', price: '$4.99', duration: '30 Días de Streaming Ilimitado', durationMinutes: 43200 },
+  ];
   
   // Datos del cliente
   const [customerEmail, setCustomerEmail] = useState('');
@@ -95,7 +114,7 @@ export default function CheckoutModal({
       });
 
       setCompletedOrder(order);
-      onClearCart();
+      handleClearCart();
       setStep('success');
       if (onOrderCompleted) onOrderCompleted(order);
     } catch (err) {
@@ -184,20 +203,38 @@ export default function CheckoutModal({
           {step === 'cart' && (
             <div>
               {cart.length === 0 ? (
-                <div className="py-12 text-center space-y-3">
-                  <div className="w-14 h-14 mx-auto rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
-                    <ShoppingCart className="w-7 h-7" />
+                <div className="py-6 space-y-4">
+                  <div className="text-center space-y-2">
+                    <div className="w-12 h-12 mx-auto rounded-full bg-red-950/60 border border-red-500/40 flex items-center justify-center">
+                      <ShoppingCart className="w-6 h-6 text-[#E50914]" />
+                    </div>
+                    <h3 className="text-sm font-bold text-white">Renueva tu Acceso VIP</h3>
+                    <p className="text-xs text-zinc-400">Selecciona un plan para continuar disfrutando:</p>
                   </div>
-                  <h3 className="text-sm font-semibold text-zinc-300">Tu carrito está vacío</h3>
-                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                    Selecciona un Pase de 24 Horas o la Membresía Mensual en nuestra página para comenzar.
-                  </p>
-                  <button
-                    onClick={onClose}
-                    className="mt-2 text-xs font-bold text-red-500 hover:text-red-400 cursor-pointer"
-                  >
-                    Ver Planes Disponibles
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {renewalPlans.map(plan => (
+                      <button
+                        key={plan.id}
+                        onClick={() => {
+                          setInternalCart([{ ...plan, quantity: 1 }]);
+                          setStep('checkout');
+                        }}
+                        className="w-full text-left p-4 bg-zinc-900 border border-zinc-700 hover:border-[#E50914] rounded-xl transition group cursor-pointer"
+                      >
+                        <p className="text-xs font-bold text-white group-hover:text-[#E50914] transition">{plan.title}</p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">{plan.duration}</p>
+                        <p className="text-lg font-black text-[#E50914] mt-2">{plan.price} <span className="text-xs text-zinc-400 font-normal">USDT</span></p>
+                      </button>
+                    ))}
+                  </div>
+                  {onGoToLogin && (
+                    <p className="text-center text-xs text-zinc-500">
+                      ¿Ya tienes un código? {' '}
+                      <button onClick={onGoToLogin} className="text-amber-400 font-semibold cursor-pointer hover:underline">
+                        Úsalo aquí
+                      </button>
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -213,14 +250,14 @@ export default function CheckoutModal({
                         {/* Cantidad */}
                         <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg p-1">
                           <button
-                            onClick={() => onUpdateQuantity(item.id, (item.quantity || 1) - 1)}
+                            onClick={() => handleUpdateQuantity(item.id, (item.quantity || 1) - 1)}
                             className="p-1 text-zinc-400 hover:text-white transition cursor-pointer"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
                           <span className="text-xs font-bold px-1.5">{item.quantity || 1}</span>
                           <button
-                            onClick={() => onUpdateQuantity(item.id, (item.quantity || 1) + 1)}
+                            onClick={() => handleUpdateQuantity(item.id, (item.quantity || 1) + 1)}
                             className="p-1 text-zinc-400 hover:text-white transition cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -233,7 +270,7 @@ export default function CheckoutModal({
                             ${((parseFloat((item.price || "0").replace(/[^0-9.]/g, '')) || 0) * (item.quantity || 1)).toFixed(2)}
                           </p>
                           <button
-                            onClick={() => onRemoveItem(item.id)}
+                            onClick={() => handleRemoveItem(item.id)}
                             className="text-zinc-500 hover:text-red-400 text-xs transition cursor-pointer mt-1"
                             title="Eliminar"
                           >

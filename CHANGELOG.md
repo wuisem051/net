@@ -4,12 +4,38 @@ Historial de versiones y actualizaciones del sistema.
 
 ---
 
-## [v1.2] — 2026-10-20
+## [v1.3.1] — 2026-10-21
+
+### 🚀 Novedades y Mejoras
+- **Compilación APK v1.3.1 (`versionCode 4`):** Generado archivo ejecutable `app-net-1.3.1.apk`.
+- **Sistema E-commerce de Compra con Criptomonedas (USDT):**
+  - Renovación completa del Home/Landing con carrito de compras interactivo (`CheckoutModal.jsx`).
+  - Catálogo de 5 planes de suscripción: Prueba Gratis, 24 Horas, Semanal (7 días), Quincenal (15 días) y Mensual (30 días), dispuestos en cuadrícula armónica (3 superiores y 2 inferiores).
+  - Pasarela con dirección de billetera USDT (TRC20 / BEP20 / Polygon), código QR dinámico y formulario de registro del Hash (TxID) de la transacción.
+  - Validación de pedidos en Firestore (`orders`) y seguimiento en tiempo real del estado de la orden (pendiente, aprobada, rechazada).
+- **Gestión Avanzada en el Panel Administrativo:**
+  - **Eliminación individual de licencias:** Botón para revocar/borrar licencias generadas directamente en la tabla de pases.
+  - **Gestión del Pool de Cookies:** Botones dedicados para copiar al portapapeles y eliminar cookies obsoletas del pool.
+  - **Dispositivos Simultáneos:** Configuración editable del número de pantallas permitidas en simultáneo para cada uno de los 5 planes.
+  - **Aprobación de Órdenes Crypto:** Verificación de pagos y generación de licencias en 1 clic.
+- **Optimización Nativa del Reproductor WebView y DRM (`CookiePlugin.java` & `AndroidManifest.xml`):**
+  - User Agent actualizado a Chrome Desktop (Windows NT 10.0 x64) para máxima compatibilidad.
+  - Aceleración por hardware forzada (`setLayerType(View.LAYER_TYPE_HARDWARE)`).
+  - Prevención de suspensión de pantalla durante reproducción (`setKeepScreenOn(true)` y permiso `WAKE_LOCK`).
+  - Inyección de JavaScript para forzar reproducción y mitigación de errores de carga en sub-frames.
+  - Permisos de conectividad y tráfico `usesCleartextTraffic="true"` para streaming fluido.
+- **Ajustes de UI / UX:**
+  - Retiro del botón de acceso al panel admin desde la vista de login.
+  - Unificación del flujo: el Home ofrece botón directo a "Ingresar", reservando la validación del código VIP exclusivamente a la pantalla de Login sin duplicar campos.
+
+---
+
+## [v1.3.0] — 2026-10-21
 
 ### ✨ Novedades
-- **Editor de Cookies estilo Cookie-Editor (Extensión):** Modal interactivo con 3 pestañas (`⚙ Campos`, `{ } JSON`, `≡ Raw`) para editar, importar o exportar cookies de cada cuenta VIP individualmente.
-- **Flujo Directo con Netflix:** Al ingresar código VIP, se activa la pantalla de sesión VIP con contador flotante y botón de acceso directo a Netflix (`netflix.com`).
-- **Bloqueo y Cierre automático:** Overlay de expiración cuando se agota el tiempo asignado a la licencia.
+- Nueva estructura de diseño del Home con navegación simplificada.
+- Integración preliminar de planes semanales y quincenales.
+- Personalización del ícono y splash nativo de la app para Android.
 
 ---
 

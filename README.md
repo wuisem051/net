@@ -1,25 +1,33 @@
-# Netflix Cookie Access Platform (Prototipo Web)
+# Netflix Plus (v1.3.1) — Plataforma de Gestión y Acceso VIP a Netflix
 
-Plataforma web minimalista y moderna con estética **Netflix Dark** (`#141414`, `#E50914`), diseñada para validar el acceso mediante cookies con una prueba gratuita de 60 minutos sincronizada en **Firebase Firestore**.
+Plataforma híbrida (Web + Android APK vía Capacitor) con estética **Netflix Dark** (`#141414`, `#E50914`), diseñada para la gestión, venta e inyección de sesiones VIP a Netflix mediante cookies, carrito de compras con pagos en criptomonedas (USDT), temporizador en vivo y sincronización con **Firebase Firestore**.
 
 ---
 
-## 🚀 Características Principales
+## 🚀 Características Principales (v1.3.1)
 
 1. **Estética y UI/UX Netflix Original:**
-   - Paleta de colores oficial: `#141414` (fondo oscuro profundo), `#E50914` (rojo Netflix) y tipografía sobria.
+   - Paleta de colores oficial: `#141414` (fondo oscuro profundo), `#E50914` (rojo Netflix) y tipografía moderna.
    - Banner cinematográfico interactivo (*Hero Slider/Player*).
-   - Catálogo interactivo con efectos hover, modal de información y vista previa de video.
-2. **Control de Acceso y Sesión por Cookies:**
-   - Ingreso de cookies en formato texto plano (`key=value; ...`) o JSON exportado (`[{"name":"...", "value":"..."}]`).
-   - Identificador hash determinista por cookie para almacenamiento en Firestore.
-3. **Temporizador Regresivo de 60 Minutos:**
-   - Cálculo automático del tiempo transcurrido desde el primer acceso.
-   - Sincronización en tiempo real (segundo a segundo).
-   - Bloqueo total de la interfaz (*Lockout Screen*) una vez consumidos los 60 minutos con redirección a pasarela de pago.
-   - Mecanismo de contingencia (*Offline Fallback*) con `localStorage` en caso de que Firebase aún no esté conectado.
-4. **Listo para Despliegue en Netlify:**
-   - Archivo [netlify.toml](file:///e:/APP%20NET/netlify.toml) configurado para Single Page Applications (SPA).
+   - Catálogo interactivo con efectos hover, modal de información y vista previa.
+2. **Tienda E-Commerce y Pagos en Criptomonedas (USDT):**
+   - Carrito de compras integrado en la cabecera y botón flotante.
+   - Selector de 5 planes de suscripción (Prueba Gratis, 24h, Semanal 7d, Quincenal 15d y Mensual 30d).
+   - Pasarela con QR dinámico, dirección de billetera USDT (TRC20 / BEP20 / Polygon) y envío de Hash de transacción (TxID).
+   - Aprobación/rechazo de pedidos desde el Panel Admin con emisión automática de licencias.
+3. **Control de Acceso y Visor Nativo In-App (Android APK):**
+   - Acceso exclusivo mediante licencias/pases VIP y cookies de sesión.
+   - Inyección automática de cookies en WebView nativo a pantalla completa sin salir de la app.
+   - User Agent optimizado para Chrome Desktop en Windows, aceleración por hardware y permisos de reproducción DRM Widevine.
+   - Banner flotante con temporizador regresivo en vivo y botón de auto-cierre con purga de cookies.
+4. **Panel de Administración Completo (`/admin` o PIN `2026`):**
+   - Generación y **eliminación individual** de licencias generadas.
+   - Editor de cookies avanzado (TSV/Netscape, JSON y key=value).
+   - Gestión del Pool de Cookies con botones para copiar y borrar cuentas obsoletas.
+   - Configuración de dispositivos simultáneos permitidos por plan.
+5. **Listo para Web y APK Android:**
+   - Web lista para despliegue en Netlify / Vercel.
+   - APK nativo Android compilado: `app-net-1.3.1.apk`.
 
 ---
 
@@ -27,18 +35,29 @@ Plataforma web minimalista y moderna con estética **Netflix Dark** (`#141414`, 
 
 ```text
 APP NET/
+├── android/                                    # Proyecto nativo Android (Capacitor)
+│   ├── app/src/main/java/com/appnet/app/
+│   │   ├── MainActivity.java
+│   │   └── CookiePlugin.java                   # Inyección nativa, WebView, DRM y temporizador
+│   └── build/outputs/apk/debug/app-debug.apk
 ├── src/
 │   ├── components/
-│   │   ├── Login.jsx         # Pantalla de acceso por cookie con demo rápida
-│   │   └── Dashboard.jsx     # Catálogo, temporizador, modal de video y pago
+│   │   ├── NetflixLanding.jsx                  # Landing con catálogo, 5 planes y carrito
+│   │   ├── CheckoutModal.jsx                   # Pasarela de pago USDT/Cripto y tracking
+│   │   ├── Login.jsx                           # Validación de códigos VIP
+│   │   ├── NetflixViewer.jsx                   # Dashboard VIP y temporizador
+│   │   └── AdminPanel.jsx                      # Panel administrativo integral
 │   ├── services/
-│   │   └── authService.js    # Lógica de cálculo de tiempo y Firestore
-│   ├── firebase.js           # Inicialización de Firebase Auth y Firestore
-│   ├── App.jsx               # Gestor de estado principal y timer
-│   ├── index.css             # Estilos de Tailwind CSS v4
+│   │   ├── authService.js                      # Lógica de pases, órdenes crypto y Firestore
+│   │   ├── firebase.js                         # Inicialización de Firebase Auth y Firestore
+│   │   └── cookiePlugin.js                     # Puente React <-> Plugin Android
+│   ├── App.jsx                                 # Gestor de estado principal y navegación
+│   ├── index.css                               # Estilos Tailwind CSS v4
 │   └── main.jsx
-├── .env.example              # Variables de entorno para Firebase
-├── netlify.toml              # Reglas de compilación y redirección para Netlify
+├── app-net-1.3.1.apk                           # 📦 APK compilado v1.3.1
+├── CHANGELOG.md                                # Historial completo de versiones
+├── README_APP_NET.md                           # Documentación técnica extendida
+├── netlify.toml                                # Reglas de compilación y redirección
 ├── package.json
 └── vite.config.js
 ```

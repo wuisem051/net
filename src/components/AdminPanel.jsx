@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  Wallet
+  Wallet,
+  Trash2
 } from 'lucide-react';
 import { 
   getAllPasses, 
@@ -28,6 +29,8 @@ import {
   updatePassCookie,
   getCookiePool, 
   saveCookieToPool, 
+  deleteCookieFromPool,
+  deletePass,
   resetPassTimer,
   getHomeConfig,
   saveHomeConfig,
@@ -121,6 +124,30 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
       alert("Error al rechazar orden: " + err.message);
     } finally {
       setProcessingOrderId(null);
+    }
+  };
+
+  const handleDeletePass = async (code) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente la licencia "${code}"?`)) {
+      return;
+    }
+    try {
+      await deletePass(code);
+      await loadAllData();
+    } catch (err) {
+      alert("Error al eliminar licencia: " + err.message);
+    }
+  };
+
+  const handleDeleteCookie = async (cookieId, label) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar la cuenta/cookie "${label}" del pool?`)) {
+      return;
+    }
+    try {
+      await deleteCookieFromPool(cookieId);
+      await loadAllData();
+    } catch (err) {
+      alert("Error al eliminar cookie: " + err.message);
     }
   };
 
@@ -833,6 +860,14 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
                             >
                               Reiniciar
                             </button>
+                            <button
+                              onClick={() => handleDeletePass(p.code)}
+                              className="text-[11px] text-red-400 hover:text-white bg-red-950/60 hover:bg-red-900/80 border border-red-500/40 px-2.5 py-1 rounded transition cursor-pointer inline-flex items-center gap-1"
+                              title="Eliminar licencia permanentemente"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Borrar</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -891,21 +926,41 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
 
             <div className="bg-zinc-950 border border-zinc-800/90 rounded-xl p-5 shadow-lg space-y-3">
               <h3 className="text-sm font-bold text-white mb-2">Cookies Disponibles en el Pool ({cookiesPool.length})</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {cookiesPool.map((c) => (
-                  <div key={c.id} className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-3 text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-zinc-200">{c.label}</span>
-                      <span className="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-600/30">
-                        {c.status || 'Activa'}
-                      </span>
+              {cookiesPool.length === 0 ? (
+                <p className="text-xs text-zinc-500 text-center py-4">No hay cookies en el pool. Agrega una arriba.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {cookiesPool.map((c) => (
+                    <div key={c.id} className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-3 text-xs space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-zinc-200 truncate flex-1">{c.label}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-600/30">
+                            {c.status || 'Activa'}
+                          </span>
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(c.cookieData); }}
+                            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition cursor-pointer"
+                            title="Copiar datos de la cookie"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCookie(c.id, c.label)}
+                            className="p-1 rounded text-red-400 hover:text-white hover:bg-red-900/70 transition cursor-pointer"
+                            title="Eliminar cookie del pool"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-zinc-500 font-mono text-[11px] truncate">
+                        {c.cookieData ? c.cookieData.substring(0, 60) + '...' : 'Sin datos'}
+                      </p>
                     </div>
-                    <p className="text-zinc-500 font-mono text-[11px] truncate">
-                      {c.cookieData}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -977,124 +1032,131 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
                   </div>
                 </div>
 
-                {/* Precios y Duraciones de los Planes */}
+                {/* Precios, Duraciones y Dispositivos de los Planes */}
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">Configuración de Planes y Tarifas</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">Configuración de Planes, Tarifas y Dispositivos Simultáneos</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
                     {/* Plan Gratis */}
                     <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
-                      <p className="text-xs font-bold text-white">Plan 1: Prueba Gratuita</p>
+                      <p className="text-xs font-bold text-white border-b border-zinc-700 pb-1.5 mb-1">Plan 1: Prueba Gratuita</p>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planFreePrice}
+                        <input type="text" value={homeConfig.planFreePrice}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planFreePrice: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
                       </div>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Texto Duración</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planFreeDuration}
+                        <input type="text" value={homeConfig.planFreeDuration}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planFreeDuration: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400 flex items-center gap-1">📱 Dispositivos Simultáneos</label>
+                        <input type="text" value={homeConfig.planFreeDevices || '1 dispositivo simultáneo'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planFreeDevices: e.target.value })}
+                          placeholder="Ej. 1 dispositivo simultáneo"
+                          className="w-full bg-zinc-950 border border-amber-700/50 rounded px-2.5 py-1.5 text-xs text-amber-300" />
                       </div>
                     </div>
 
                     {/* Plan 24 Horas */}
                     <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
-                      <p className="text-xs font-bold text-white">Plan 2: Pase Diario 24H</p>
+                      <p className="text-xs font-bold text-white border-b border-zinc-700 pb-1.5 mb-1">Plan 2: Pase Diario 24H</p>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
-                        <input
-                          type="text"
-                          value={homeConfig.plan24hPrice}
+                        <input type="text" value={homeConfig.plan24hPrice}
                           onChange={(e) => setHomeConfig({ ...homeConfig, plan24hPrice: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
                       </div>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Texto Duración</label>
-                        <input
-                          type="text"
-                          value={homeConfig.plan24hDuration}
+                        <input type="text" value={homeConfig.plan24hDuration}
                           onChange={(e) => setHomeConfig({ ...homeConfig, plan24hDuration: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">📱 Dispositivos Simultáneos</label>
+                        <input type="text" value={homeConfig.plan24hDevices || '1 dispositivo simultáneo'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, plan24hDevices: e.target.value })}
+                          placeholder="Ej. 1 dispositivo simultáneo"
+                          className="w-full bg-zinc-950 border border-amber-700/50 rounded px-2.5 py-1.5 text-xs text-amber-300" />
                       </div>
                     </div>
 
-                    {/* Plan Semanal (7 días) */}
+                    {/* Plan Semanal */}
                     <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
-                      <p className="text-xs font-bold text-white">Plan 3: Pase Semanal (7 Días)</p>
+                      <p className="text-xs font-bold text-white border-b border-zinc-700 pb-1.5 mb-1">Plan 3: Pase Semanal (7 Días)</p>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planWeeklyPrice || '$2.49'}
+                        <input type="text" value={homeConfig.planWeeklyPrice || '$2.49'}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planWeeklyPrice: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
                       </div>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Texto Duración</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planWeeklyDuration || '7 Días de Acceso Continuo'}
+                        <input type="text" value={homeConfig.planWeeklyDuration || '7 Días de Acceso Continuo'}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planWeeklyDuration: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">📱 Dispositivos Simultáneos</label>
+                        <input type="text" value={homeConfig.planWeeklyDevices || '2 dispositivos simultáneos'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planWeeklyDevices: e.target.value })}
+                          placeholder="Ej. 2 dispositivos simultáneos"
+                          className="w-full bg-zinc-950 border border-amber-700/50 rounded px-2.5 py-1.5 text-xs text-amber-300" />
                       </div>
                     </div>
 
-                    {/* Plan Quincenal (15 días) */}
+                    {/* Plan Quincenal */}
                     <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
-                      <p className="text-xs font-bold text-white">Plan 4: Pase Quincenal (15 Días)</p>
+                      <p className="text-xs font-bold text-white border-b border-zinc-700 pb-1.5 mb-1">Plan 4: Pase Quincenal (15 Días)</p>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planBiweeklyPrice || '$3.49'}
+                        <input type="text" value={homeConfig.planBiweeklyPrice || '$3.49'}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planBiweeklyPrice: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
                       </div>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Texto Duración</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planBiweeklyDuration || '15 Días de Acceso VIP'}
+                        <input type="text" value={homeConfig.planBiweeklyDuration || '15 Días de Acceso VIP'}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planBiweeklyDuration: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">📱 Dispositivos Simultáneos</label>
+                        <input type="text" value={homeConfig.planBiweeklyDevices || '2 dispositivos simultáneos'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planBiweeklyDevices: e.target.value })}
+                          placeholder="Ej. 2 dispositivos simultáneos"
+                          className="w-full bg-zinc-950 border border-amber-700/50 rounded px-2.5 py-1.5 text-xs text-amber-300" />
                       </div>
                     </div>
 
                     {/* Plan Mensual */}
                     <div className="bg-zinc-900/60 p-4 border border-[#E50914]/50 rounded-lg space-y-2">
-                      <p className="text-xs font-bold text-white">Plan 3: Membresía Mensual</p>
+                      <p className="text-xs font-bold text-white border-b border-red-900/50 pb-1.5 mb-1">Plan 5: Membresía Mensual ⭐</p>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planMonthlyPrice}
+                        <input type="text" value={homeConfig.planMonthlyPrice}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planMonthlyPrice: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
                       </div>
                       <div>
                         <label className="block text-[11px] text-zinc-400">Texto Duración</label>
-                        <input
-                          type="text"
-                          value={homeConfig.planMonthlyDuration}
+                        <input type="text" value={homeConfig.planMonthlyDuration}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planMonthlyDuration: e.target.value })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">📱 Dispositivos Simultáneos</label>
+                        <input type="text" value={homeConfig.planMonthlyDevices || '4 dispositivos simultáneos (Ultra HD)'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planMonthlyDevices: e.target.value })}
+                          placeholder="Ej. 4 dispositivos simultáneos (Ultra HD)"
+                          className="w-full bg-zinc-950 border border-amber-700/50 rounded px-2.5 py-1.5 text-xs text-amber-300" />
                       </div>
                     </div>
+
                   </div>
                 </div>
 

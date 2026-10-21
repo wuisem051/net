@@ -121,9 +121,22 @@ public class CookiePlugin extends Plugin {
                     settings.setAllowFileAccess(true);
                     settings.setAllowContentAccess(true);
                     settings.setMediaPlaybackRequiresUserGesture(false);
+                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                    // Permitir contenido mixto HTTPS/HTTP (necesario para recursos de Netflix)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                    }
+                    // Aceleracion por hardware para decodificacion de video DRM
+                    netflixWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                    netflixWebView.setKeepScreenOn(true);
 
-                    // User Agent moderno de ChromeOS / Linux x86_64 compatible con Widevine CDM
-                    settings.setUserAgentString("Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
+                    // User Agent de Chrome Desktop Windows — da acceso completo a Netflix
+                    // y mayor compatibilidad con Widevine que el User Agent de ChromeOS
+                    settings.setUserAgentString(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                        "Chrome/131.0.0.0 Safari/537.36"
+                    );
 
                     // 4. Habilitar CookieManager explícitamente para este WebView
                     final CookieManager cookieManager = CookieManager.getInstance();
@@ -141,6 +154,14 @@ public class CookiePlugin extends Plugin {
 
                     netflixWebView.setWebViewClient(new WebViewClient() {
                         @Override
+                        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                            String reqUrl = request.getUrl().toString();
+                            // Navegar internamente dominios de Netflix
+                            view.loadUrl(reqUrl);
+                            return true;
+                        }
+
+                        @Override
                         public boolean shouldOverrideUrlLoading(WebView view, String url) {
                             view.loadUrl(url);
                             return true;
@@ -150,12 +171,22 @@ public class CookiePlugin extends Plugin {
                         public void onPageFinished(WebView view, String url) {
                             super.onPageFinished(view, url);
                             Log.d(TAG, "Page finished loading: " + url);
+                            // JS: forzar play en elementos de video que esten pausados
+                            view.evaluateJavascript(
+                                "(function(){ try { var vs=document.querySelectorAll('video'); " +
+                                "for(var i=0;i<vs.length;i++){ vs[i].play().catch(function(){}); } } catch(e){} })();",
+                                null
+                            );
                         }
 
                         @Override
                         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                             super.onReceivedError(view, request, error);
-                            Log.w(TAG, "WebView error: " + error.toString());
+                            if (request.isForMainFrame()) {
+                                Log.w(TAG, "WebView main frame error: " +
+                                    (error != null ? error.getDescription() : "unknown") +
+                                    " | URL: " + request.getUrl());
+                            }
                         }
                     });
 

@@ -1,7 +1,7 @@
-# 🎬 Netflix Plus (v1.1) — Plataforma de Gestión y Acceso VIP a Netflix
+# 🎬 Netflix Plus (v1.3.1) — Plataforma de Gestión y Acceso VIP a Netflix
 
 > **Documento de Arquitectura, Referencia Técnica y Registro de Actualizaciones**  
-> Última actualización: Octubre 2026
+> Última actualización: 21 de Octubre 2026 — Versión 1.3.1 (APK `versionCode 4`)
 
 ---
 
@@ -10,26 +10,28 @@
 **Netflix Plus** es una plataforma híbrida (Web + APK Nativo Android vía Capacitor) desarrollada para comercializar y gestionar accesos VIP temporales a Netflix sin necesidad de compartir contraseñas ni correos con los clientes finales.
 
 ### Características Clave:
-1. **Acceso por Licencias / Pases VIP**: Los usuarios adquieren códigos (ej. `VIP-PREMIUM-2026`, `TEST`) con una duración configurada en minutos (ej. 60 min, 1440 min = 24h).
-2. **Autenticación transparente mediante Cookies**:
+1. **Acceso por Licencias / Pases VIP**: Los usuarios adquieren códigos (ej. `VIP-PREMIUM-2026`, `VIP-SEMANAL-...`) con duraciones parametrizables: Prueba Gratis, 24h, Semanal (7d), Quincenal (15d) y Mensual (30d).
+2. **Tienda Integrada & Pagos con Cripto / USDT**:
+   - Carrito de compras intuitivo con selector de planes (grilla de 3 planes arriba y 2 abajo).
+   - Pasarela con dirección de billetera USDT (TRC20 / BEP20 / Polygon) y código QR dinámico.
+   - Envío de Hash de transacción (TxID) y verificación de orden en tiempo real.
+3. **Autenticación transparente mediante Cookies**:
    - Cada pase tiene asignada una sesión de cookies de Netflix (`NetflixId`, `SecureNetflixId`, etc.).
    - Al pulsar *"Abrir Netflix Ahora"*, la app inyecta las cookies en el motor web nativo de Android.
-3. **Visor Nativo Integrado (In-App WebView)**:
-   - Netflix carga **dentro de la misma app** a pantalla completa (sin salirse a Chrome externo ni navegadores ajenos).
+4. **Visor Nativo Integrado (In-App WebView Ultra-Optimizado)**:
+   - Netflix carga **dentro de la misma app** a pantalla completa con aceleración por hardware (`setLayerType(HARDWARE)`), pantalla encendida (`keepScreenOn`) y User-Agent de Chrome Desktop para Windows.
    - Muestra un **banner flotante superior** con el temporizador regresivo en vivo y un botón `✕ Salir`.
-4. **Reproducción de Video DRM Widevine Habilitada**:
-   - Concesión automática de permisos de medios protegidos (`RESOURCE_PROTECTED_MEDIA_ID`) para reproducir películas y series sin bloqueos DRM.
-5. **Cierre Automático y Purga de Sesión**:
+5. **Reproducción de Video DRM Widevine Habilitada**:
+   - Concesión automática de permisos de medios protegidos (`RESOURCE_PROTECTED_MEDIA_ID`) y bypass de bloqueos para reproducción continua.
+6. **Cierre Automático y Purga de Sesión**:
    - Al expirar el tiempo de la licencia (o cuando el usuario presiona salir), el visor nativo se cierra automáticamente y **se borran todas las cookies** del sistema para proteger la cuenta.
-6. **Panel de Administración Completo (`/admin` o PIN `2026`)**:
-   - Generación de licencias con duración personalizada.
-   - **Editor de Cookies integrado** compatible con:
-     - Formato Netscape / TSV (copiado directo de la extensión Cookie-Editor con tabulaciones).
-     - Formato JSON array exportado por Cookie-Editor.
-     - Pares clásicos `nombre=valor;`.
-   - Pool de cuentas compartidas o asignación individual.
+7. **Panel de Administración Completo (`/admin` o PIN `2026`)**:
+   - Generación y **eliminación individual** de licencias con botón directo.
+   - Gestión y limpieza del **Pool de Cookies** con botones para copiar y borrar cookies obsoletas.
+   - Control de **pantallas / dispositivos simultáneos** configurables por plan.
+   - **Gestor de Órdenes Crypto**: Aprobación o rechazo de pagos reportados con generación automática de licencias al confirmar la transacción.
+   - Editor de Cookies con soporte TSV/Netscape, JSON y key=value.
    - Sincronización en tiempo real con **Firebase Firestore** (`setDoc` con `{ merge: true }`).
-   - Personalización visual de la página de inicio (landing) y planes de precios.
 
 ---
 
@@ -46,12 +48,13 @@ APP NET/
 │
 ├── src/                                        # Frontend React + Vite + TailwindCSS
 │   ├── components/
-│   │   ├── NetflixLanding.jsx                  # Página pública con catálogo, planes y botón de acceso
-│   │   ├── Login.jsx                           # Formulario de validación de códigos VIP
-│   │   ├── NetflixViewer.jsx                   # Dashboard del usuario VIP con temporizador y botón de lanzamiento
-│   │   └── AdminPanel.jsx                      # Panel administrativo, editor de licencias y visor de cookies
+│   │   ├── NetflixLanding.jsx                  # Página pública con catálogo, 5 planes (grilla 3+2), carrito y acceso directo
+│   │   ├── CheckoutModal.jsx                   # Pasarela de pago USDT/Cripto, carrito y confirmación de hash
+│   │   ├── Login.jsx                           # Formulario de validación de códigos VIP (sin botón admin)
+│   │   ├── NetflixViewer.jsx                   # Dashboard VIP con temporizador y botón de lanzamiento
+│   │   └── AdminPanel.jsx                      # Panel administrativo: gestión de licencias, pool, órdenes y límites
 │   ├── services/
-│   │   ├── authService.js                      # Lógica de validación de pases, Firestore y fallback local
+│   │   ├── authService.js                      # Lógica de validación de pases, órdenes crypto, Firestore y fallback local
 │   │   ├── firebase.js                         # Configuración de Firebase Firestore
 │   │   └── cookiePlugin.js                     # 🌉 Puente JS entre React y el CookiePlugin nativo
 │   ├── App.jsx                                 # Router de estados y control de sesión
@@ -60,8 +63,8 @@ APP NET/
 ├── firestore.rules                             # Reglas de seguridad de base de datos Firestore
 ├── firebase.json                               # Configuración de Firebase
 ├── capacitor.config.json                       # Configuración de Capacitor (appName: "Netflix Plus")
-├── Netflix-Plus-v1.1.apk                       # 📦 APK de distribución listo para instalar
-├── app-debug.apk                               # Acceso directo al último APK generado
+├── app-net-1.3.1.apk                           # 📦 APK v1.3.1 compilado listo para instalar
+├── CHANGELOG.md                                # Historial detallado de versiones
 └── README_APP_NET.md                           # Este documento de referencia y changelog
 ```
 
@@ -136,14 +139,32 @@ Tanto en [`AdminPanel.jsx`](file:///e:/APP%20NET/src/components/AdminPanel.jsx) 
 
 ## 📝 5. Historial Completo de Actualizaciones (Changelog)
 
-### 🚀 Update v1.5 (Octubre 2026 - Soporte DRM Widevine y Eliminación del Error M7701)
-- **Problema detectado**: Al intentar reproducir una película o serie, la pantalla se ponía estática con el mensaje: *"Sentimos la interrupción... Visita chrome://settings/content/protectedContent... Código de error M7701-1003"*.
-- **Causa**: El `WebView` de Android bloqueaba silenciosamente la solicitud de identificador de contenido protegido (`RESOURCE_PROTECTED_MEDIA_ID`) requerida por Widevine CDM.
-- **Solución implementada**:
-  - Implementación del callback `onPermissionRequest` en el `WebChromeClient` de `CookiePlugin.java` para aprobar automáticamente las solicitudes de DRM, audio y video.
-  - Actualización del User-Agent a una versión certificada de ChromeOS (`Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) ...`).
-  - Nombre oficial actualizado en `strings.xml` y `capacitor.config.json` a **Netflix Plus**.
-  - Generación del archivo ejecutable **`Netflix-Plus-v1.1.apk`**.
+### 🚀 Update v1.3.1 (21 Octubre 2026 - E-commerce Crypto, 5 Planes, Control Admin y Optimización DRM)
+- **E-commerce & Pasarela Crypto USDT:**
+  - Carrito de compras interactivo con botón flotante y en cabecera.
+  - Soporte de pagos con Criptomonedas (USDT en TRC20, BEP20, Polygon) con QR y subida de TxID Hash.
+  - Catálogo de 5 planes: Gratis (60 min), 24 Horas, Semanal (7 días), Quincenal (15 días) y Mensual (30 días), distribuidos en cuadrícula 3 superiores y 2 inferiores.
+- **Gestión Avanzada en Panel Admin:**
+  - Nueva sección para aprobar/rechazar órdenes de pago crypto y emitir licencias automáticas.
+  - Botón rojo para eliminar licencias generadas individualmente.
+  - Botón para copiar y eliminar cuentas del Pool de Cookies.
+  - Configuración editable de dispositivos simultáneos permitidos por plan.
+- **Mejoras del Motor WebView y DRM Nativo:**
+  - Aceleración por hardware forzada (`setLayerType(View.LAYER_TYPE_HARDWARE)`).
+  - User-Agent de Google Chrome Windows Desktop para máxima compatibilidad con el reproductor de Netflix.
+  - Pantalla siempre activa (`keepScreenOn`) y permisos `WAKE_LOCK`, `FOREGROUND_SERVICE` y `usesCleartextTraffic`.
+- **Ajustes de Interfaz:**
+  - Eliminado el botón del panel admin de la pantalla de Login.
+  - Eliminado el campo duplicado de licencia en el Home; navegación fluida con botón directo de ingreso.
+- **Compilación:** Generada versión `1.3.1` (`versionCode 4`) disponible en `app-net-1.3.1.apk`.
+
+### 🚀 Update v1.3.0 (21 Octubre 2026 - Rediseño de Home y Planes Expandidos)
+- Reorganización de catálogo en el Home y adición de planes intermedios.
+- Actualización de íconos y splash screen nativo en Android.
+
+### 🚀 Update v1.2 (20 Octubre 2026 - Editor de Cookies Avanzado)
+- Modal interactivo con 3 pestañas (`Campos`, `JSON`, `Raw/Netscape`).
+- Temporizador regresivo en sesión VIP con auto-cierre.
 
 ### 🚀 Update v1.4 (Octubre 2026 - Desktop User-Agent contra bloqueo móvil)
 - **Problema**: Al inyectar la cookie con éxito, Netflix reconocía la cuenta (`Gérer le compte`), pero mostraba la pantalla publicitaria bloqueante: *"L'expérience Netflix est meilleure avec l'app"*.

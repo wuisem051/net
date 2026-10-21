@@ -3,6 +3,7 @@ import {
   getDoc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   collection, 
   getDocs, 
   serverTimestamp 
@@ -29,14 +30,19 @@ export const DEFAULT_HOME_CONFIG = {
   whatsappNumber: "+573001234567",
   planFreePrice: "$0.00",
   planFreeDuration: "60 Minutos de Acceso",
+  planFreeDevices: "1 dispositivo simultáneo",
   plan24hPrice: "$0.99",
   plan24hDuration: "Acceso Completo 1 Día",
+  plan24hDevices: "1 dispositivo simultáneo",
   planWeeklyPrice: "$2.49",
   planWeeklyDuration: "7 Días de Acceso Continuo",
+  planWeeklyDevices: "2 dispositivos simultáneos",
   planBiweeklyPrice: "$3.49",
   planBiweeklyDuration: "15 Días de Acceso VIP",
+  planBiweeklyDevices: "2 dispositivos simultáneos",
   planMonthlyPrice: "$4.99",
   planMonthlyDuration: "30 Días de Streaming Ilimitado",
+  planMonthlyDevices: "4 dispositivos simultáneos (Ultra HD)",
   // Métodos de pago cripto / USDT
   cryptoWallets: {
     usdt_trc20: {
@@ -332,6 +338,41 @@ export async function saveCookieToPool({ label, cookieData }) {
   pool.unshift(payload);
   saveLocalCookies(pool);
   return payload;
+}
+
+/**
+ * Eliminar una cookie del pool
+ */
+export async function deleteCookieFromPool(cookieId) {
+  try {
+    await deleteDoc(doc(db, COOKIES_POOL_COLLECTION, cookieId));
+  } catch (err) {
+    console.warn("Borrando cookie en fallback local:", err.message);
+  }
+
+  const pool = getLocalCookies();
+  const updated = pool.filter(c => c.id !== cookieId);
+  saveLocalCookies(updated);
+  return true;
+}
+
+/**
+ * Eliminar una licencia del sistema
+ */
+export async function deletePass(code) {
+  const cleanCode = (code || "").trim().toUpperCase();
+  try {
+    await deleteDoc(doc(db, PASS_COLLECTION, cleanCode));
+  } catch (err) {
+    console.warn("Borrando pase en fallback local:", err.message);
+  }
+
+  const local = getLocalPasses();
+  if (local[cleanCode]) {
+    delete local[cleanCode];
+    saveLocalPasses(local);
+  }
+  return true;
 }
 
 /**

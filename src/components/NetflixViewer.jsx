@@ -14,6 +14,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { injectCookies, clearCookies, openNativeNetflixView, closeNativeNetflixView } from '../services/cookiePlugin';
+import CheckoutModal from './CheckoutModal';
 
 export default function NetflixViewer({
   sessionData,
@@ -277,51 +278,12 @@ export default function NetflixViewer({
         </div>
       )}
 
-      {/* ─── MODAL DE PAGO ─── */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-sm w-full bg-[#181818] border border-zinc-800 rounded-2xl p-6 shadow-2xl relative">
-            <button
-              onClick={() => setShowPaymentModal(false)}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-white cursor-pointer text-lg leading-none"
-            >✕</button>
-
-            <div className="text-center mb-5">
-              <div className="w-11 h-11 bg-red-950/70 border border-[#E50914] rounded-full flex items-center justify-center mx-auto mb-3">
-                <CreditCard className="w-5 h-5 text-[#E50914]" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Renovar Acceso VIP</h3>
-              <p className="text-xs text-zinc-400 mt-1">Elige tu plan para continuar</p>
-            </div>
-
-            <div className="space-y-2.5 mb-5">
-              <div className="p-3.5 bg-zinc-900 border border-[#E50914] rounded-xl flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-xs text-white">Pase 24 Horas</p>
-                  <p className="text-[11px] text-zinc-400">Acceso VIP completo por 1 día</p>
-                </div>
-                <span className="font-bold text-sm text-[#E50914]">$1.99</span>
-              </div>
-              <div className="p-3.5 bg-zinc-900/50 border border-zinc-800 rounded-xl flex items-center justify-between hover:border-zinc-700 transition">
-                <div>
-                  <p className="font-semibold text-xs text-white">Membresía Mensual</p>
-                  <p className="text-[11px] text-zinc-400">30 días de acceso ilimitado</p>
-                </div>
-                <span className="font-bold text-sm text-zinc-300">$3.99</span>
-              </div>
-            </div>
-
-            <a
-              href="https://wa.me/"
-              target="_blank"
-              rel="noreferrer"
-              className="block w-full text-center bg-[#E50914] hover:bg-[#b80710] text-white font-bold py-3 rounded-xl text-sm transition shadow-lg cursor-pointer"
-            >
-              Contactar para pagar
-            </a>
-          </div>
-        </div>
-      )}
+      {/* ─── MODAL DE COMPRA (E-COMMERCE) ─── */}
+      <CheckoutModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        onGoToLogin={onLogout}
+      />
     </div>
   );
 }
