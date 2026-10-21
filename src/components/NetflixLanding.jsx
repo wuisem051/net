@@ -21,7 +21,6 @@ import CheckoutModal from './CheckoutModal';
 
 export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_CONFIG }) {
   const [openFaq, setOpenFaq] = useState(null);
-  const [accessCodeInput, setAccessCodeInput] = useState('');
   
   // Estado del Carrito y Modal de Checkout
   const [cart, setCart] = useState([]);
@@ -32,11 +31,6 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
 
   const toggleFaq = (index) => {
     setOpenFaq(openFaq === index ? null : index);
-  };
-
-  const handleStart = (e) => {
-    e.preventDefault();
-    onGoToLogin(accessCodeInput);
   };
 
   // Funciones del Carrito
@@ -238,27 +232,24 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
             {config.heroDescription}
           </p>
 
-          <p className="text-xs sm:text-sm text-zinc-400 mb-8">
-            ¿Ya tienes tu clave de licencia? Ingrésala aquí para activar tu acceso inmediato:
-          </p>
-
-          {/* Formulario de activación rápida */}
-          <form onSubmit={handleStart} className="w-full max-w-xl flex flex-col sm:flex-row gap-2 mb-4">
-            <input
-              type="text"
-              value={accessCodeInput}
-              onChange={(e) => setAccessCodeInput(e.target.value.toUpperCase())}
-              placeholder="Ingresa tu clave (Ej. VIP-PRUEBA)"
-              className="w-full bg-black/80 border border-zinc-600 rounded px-4 py-3.5 text-sm font-mono tracking-wider text-white placeholder-zinc-500 focus:outline-none focus:border-[#E50914] focus:ring-1 focus:ring-[#E50914] transition"
-            />
+          {/* Botones de Acción Hero (El ingreso de licencia se hace exclusivamente en el Login) */}
+          <div className="w-full max-w-md flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-6">
             <button
-              type="submit"
-              className="bg-[#E50914] hover:bg-[#b80710] text-white font-bold text-base px-7 py-3.5 rounded flex items-center justify-center gap-2 transition cursor-pointer shrink-0 shadow-xl shadow-red-900/40"
+              onClick={() => onGoToLogin()}
+              className="w-full sm:w-auto bg-[#E50914] hover:bg-[#b80710] text-white font-bold text-base px-8 py-4 rounded-xl flex items-center justify-center gap-2.5 transition cursor-pointer shadow-xl shadow-red-900/50 hover:scale-105 active:scale-95"
             >
-              <span>Activar Acceso</span>
-              <ChevronRight className="w-5 h-5" />
+              <span>Ingresar con Licencia</span>
+              <ArrowRight className="w-5 h-5" />
             </button>
-          </form>
+
+            <button
+              onClick={() => setIsCheckoutOpen(true)}
+              className="w-full sm:w-auto bg-zinc-900/90 hover:bg-zinc-800 text-white font-semibold text-sm px-6 py-4 rounded-xl border border-zinc-700 flex items-center justify-center gap-2 transition cursor-pointer hover:border-zinc-500"
+            >
+              <ShoppingCart className="w-4 h-4 text-amber-400" />
+              <span>Comprar Acceso</span>
+            </button>
+          </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zinc-400 pt-2">
             <span className="flex items-center gap-1.5">

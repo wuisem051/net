@@ -4,7 +4,6 @@ import {
   ShieldAlert, 
   ArrowRight, 
   CheckCircle2, 
-  SlidersHorizontal,
   Clock,
   Sparkles,
   Lock,
@@ -71,15 +70,8 @@ export default function Login({ onLoginSuccess, onOpenAdmin, onBackToHome, initi
           </span>
         </div>
 
-        {/* Acceso discreto para el Administrador */}
-        <button 
-          onClick={onOpenAdmin}
-          className="text-xs text-zinc-400 hover:text-white bg-zinc-900/90 hover:bg-zinc-800 transition px-3.5 py-1.5 rounded-full border border-zinc-800 flex items-center gap-1.5 cursor-pointer backdrop-blur"
-          title="Panel exclusivo para gestión de licencias"
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />
-          <span>Panel Admin</span>
-        </button>
+        {/* Espacio reservado para balancear el header */}
+        <div />
       </header>
 
       {/* Tarjeta de Login: Solo licencias proporcionadas, registro deshabilitado */}
