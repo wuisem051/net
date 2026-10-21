@@ -1027,6 +1027,52 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
                       </div>
                     </div>
 
+                    {/* Plan Semanal (7 días) */}
+                    <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
+                      <p className="text-xs font-bold text-white">Plan 3: Pase Semanal (7 Días)</p>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
+                        <input
+                          type="text"
+                          value={homeConfig.planWeeklyPrice || '$2.49'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planWeeklyPrice: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">Texto Duración</label>
+                        <input
+                          type="text"
+                          value={homeConfig.planWeeklyDuration || '7 Días de Acceso Continuo'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planWeeklyDuration: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Plan Quincenal (15 días) */}
+                    <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
+                      <p className="text-xs font-bold text-white">Plan 4: Pase Quincenal (15 Días)</p>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">Precio Mostrado</label>
+                        <input
+                          type="text"
+                          value={homeConfig.planBiweeklyPrice || '$3.49'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planBiweeklyPrice: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">Texto Duración</label>
+                        <input
+                          type="text"
+                          value={homeConfig.planBiweeklyDuration || '15 Días de Acceso VIP'}
+                          onChange={(e) => setHomeConfig({ ...homeConfig, planBiweeklyDuration: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
                     {/* Plan Mensual */}
                     <div className="bg-zinc-900/60 p-4 border border-[#E50914]/50 rounded-lg space-y-2">
                       <p className="text-xs font-bold text-white">Plan 3: Membresía Mensual</p>

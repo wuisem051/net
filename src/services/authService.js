@@ -31,6 +31,10 @@ export const DEFAULT_HOME_CONFIG = {
   planFreeDuration: "60 Minutos de Acceso",
   plan24hPrice: "$0.99",
   plan24hDuration: "Acceso Completo 1 Día",
+  planWeeklyPrice: "$2.49",
+  planWeeklyDuration: "7 Días de Acceso Continuo",
+  planBiweeklyPrice: "$3.49",
+  planBiweeklyDuration: "15 Días de Acceso VIP",
   planMonthlyPrice: "$4.99",
   planMonthlyDuration: "30 Días de Streaming Ilimitado",
   // Métodos de pago cripto / USDT

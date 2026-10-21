@@ -111,6 +111,56 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
       })
     },
     {
+      id: "pass_weekly",
+      title: "Pase Semanal (7 Días)",
+      price: config.planWeeklyPrice || "$2.49",
+      duration: config.planWeeklyDuration || "7 Días de Acceso Continuo",
+      durationMinutes: 10080,
+      badge: "POPULAR SEMANAL",
+      featured: false,
+      isFree: false,
+      features: [
+        "7 días seguidos de series y estrenos",
+        "Calidad 4K Ultra HD garantizada",
+        "Multiplataforma (TV, Móvil, PC)",
+        "Soporte continuo y reposición activa",
+        "Sin compromisos ni cargos ocultos"
+      ],
+      buttonText: "Añadir al Carrito",
+      action: () => addToCart({
+        id: "pass_weekly",
+        title: "Pase Semanal (7 Días)",
+        price: config.planWeeklyPrice || "$2.49",
+        duration: config.planWeeklyDuration || "7 Días de Acceso Continuo",
+        durationMinutes: 10080
+      })
+    },
+    {
+      id: "pass_biweekly",
+      title: "Pase Quincenal (15 Días)",
+      price: config.planBiweeklyPrice || "$3.49",
+      duration: config.planBiweeklyDuration || "15 Días de Acceso VIP",
+      durationMinutes: 21600,
+      badge: "EXCELENTE VALOR",
+      featured: false,
+      isFree: false,
+      features: [
+        "Medio mes completo de entretenimiento",
+        "Perfiles dedicados de alta estabilidad",
+        "Soporte técnico prioritario 24/7",
+        "Ahorro de más del 70% frente a la tarifa oficial",
+        "Entrega inmediata del código"
+      ],
+      buttonText: "Añadir al Carrito",
+      action: () => addToCart({
+        id: "pass_biweekly",
+        title: "Pase Quincenal (15 Días)",
+        price: config.planBiweeklyPrice || "$3.49",
+        duration: config.planBiweeklyDuration || "15 Días de Acceso VIP",
+        durationMinutes: 21600
+      })
+    },
+    {
       id: "monthly_vip",
       title: "Membresía Mensual VIP",
       price: config.planMonthlyPrice || "$4.99",
@@ -283,7 +333,7 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
           {pricingPlans.map((plan) => (
             <div
               key={plan.id}
