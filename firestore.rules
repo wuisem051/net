@@ -13,6 +13,10 @@ service cloud.firestore {
     match /app_config/{configId} {
       allow read, write: if true;
     }
+    // Órdenes de compra con USDT/Cripto
+    match /license_orders/{orderId} {
+      allow read, write: if true;
+    }
     // Fallback general para desarrollo
     match /{document=**} {
       allow read, write: if true;

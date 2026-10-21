@@ -18,6 +18,9 @@ const LOCAL_STORAGE_PASSES_KEY = "vip_passes_local";
 const LOCAL_STORAGE_POOL_KEY = "cookie_pool_local";
 const LOCAL_STORAGE_CONFIG_KEY = "home_settings_local";
 
+const ORDERS_COLLECTION = "license_orders";
+const LOCAL_STORAGE_ORDERS_KEY = "license_orders_local";
+
 // Configuración inicial por defecto del Home
 export const DEFAULT_HOME_CONFIG = {
   heroTitle: "Tus series y películas favoritas",
@@ -26,10 +29,31 @@ export const DEFAULT_HOME_CONFIG = {
   whatsappNumber: "+573001234567",
   planFreePrice: "$0.00",
   planFreeDuration: "60 Minutos de Acceso",
-  plan24hPrice: "$1.99",
+  plan24hPrice: "$0.99",
   plan24hDuration: "Acceso Completo 1 Día",
-  planMonthlyPrice: "$3.99",
-  planMonthlyDuration: "30 Días de Streaming Ilimitado"
+  planMonthlyPrice: "$4.99",
+  planMonthlyDuration: "30 Días de Streaming Ilimitado",
+  // Métodos de pago cripto / USDT
+  cryptoWallets: {
+    usdt_trc20: {
+      name: "USDT (TRC20 - Tron)",
+      address: "TYDzsxdjhGjhG67b8sd8sd8923hhjksd98",
+      network: "TRC20",
+      enabled: true
+    },
+    usdt_bep20: {
+      name: "USDT (BEP20 - Binance Smart Chain)",
+      address: "0x71c89320e4d0b134f593b4f6e2fba6429d3c52a1",
+      network: "BEP20 (BSC)",
+      enabled: true
+    },
+    btc: {
+      name: "Bitcoin (BTC)",
+      address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+      network: "BTC Mainnet",
+      enabled: false
+    }
+  }
 };
 
 // Acceso de prueba listo para usar
@@ -369,3 +393,212 @@ export async function saveHomeConfig(newConfig) {
   }
   return newConfig;
 }
+
+// ==========================================
+// GESTIÓN DE ÓRDENES DE COMPRA (E-COMMERCE)
+// ==========================================
+
+function getLocalOrders() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalOrders(orders) {
+  localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(orders));
+}
+
+/**
+ * Crear una nueva orden de compra con cripto/USDT
+ */
+export async function createOrder({
+  items = [],
+  customerEmail = "",
+  customerName = "",
+  paymentMethod = "usdt_trc20",
+  walletAddress = "",
+  network = "TRC20",
+  amountUsd = 0,
+  transactionHash = "",
+  proofNote = ""
+}) {
+  const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+  const orderId = `ORD-${Date.now().toString().slice(-4)}-${randomSuffix}`;
+
+  const payload = {
+    id: orderId,
+    orderId,
+    items, // [{ planId, title, price, durationMinutes, quantity }]
+    customerEmail: customerEmail.trim().toLowerCase(),
+    customerName: customerName.trim(),
+    paymentMethod,
+    walletAddress,
+    network,
+    amountUsd: Number(amountUsd),
+    transactionHash: transactionHash.trim(),
+    proofNote: proofNote.trim(),
+    status: "pending", // 'pending' | 'approved' | 'rejected'
+    assignedLicenses: [], // Códigos VIP generados tras aprobación
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  try {
+    await setDoc(doc(db, ORDERS_COLLECTION, orderId), payload);
+  } catch (err) {
+    console.warn("Guardando orden en fallback local:", err.message);
+  }
+
+  const local = getLocalOrders();
+  local.unshift(payload);
+  saveLocalOrders(local);
+
+  return payload;
+}
+
+/**
+ * Obtener todas las órdenes para el Admin Panel
+ */
+export async function getAllOrders() {
+  try {
+    const colRef = collection(db, ORDERS_COLLECTION);
+    const snap = await getDocs(colRef);
+    if (!snap.empty) {
+      const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      orders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return orders;
+    }
+  } catch (err) {
+    console.warn("Fallback local para órdenes:", err.message);
+  }
+
+  const local = getLocalOrders();
+  local.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return local;
+}
+
+/**
+ * Consultar una orden específica por ID (para el cliente)
+ */
+export async function getOrderById(orderId) {
+  const cleanId = (orderId || "").trim().toUpperCase();
+  if (!cleanId) return null;
+
+  try {
+    const docRef = doc(db, ORDERS_COLLECTION, cleanId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() };
+    }
+  } catch (err) {
+    console.warn("Consultando orden localmente:", err.message);
+  }
+
+  const local = getLocalOrders();
+  return local.find(o => o.orderId?.toUpperCase() === cleanId || o.id?.toUpperCase() === cleanId) || null;
+}
+
+/**
+ * Aprobar orden de compra y generar automáticamente las licencias VIP correspondientes
+ */
+export async function approveOrder(orderId, adminNotes = "") {
+  const cleanId = orderId.trim();
+  const allOrders = await getAllOrders();
+  const order = allOrders.find(o => o.id === cleanId || o.orderId === cleanId);
+
+  if (!order) {
+    throw new Error("Orden no encontrada");
+  }
+
+  if (order.status === "approved") {
+    return order;
+  }
+
+  // Generar licencias para cada ítem de la orden
+  const cookies = await getAllCookies();
+  const activeCookie = cookies.find(c => c.status === "active")?.cookieData || "";
+
+  const generatedLicenses = [];
+
+  for (const item of (order.items || [])) {
+    const qty = item.quantity || 1;
+    for (let i = 0; i < qty; i++) {
+      const codeSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+      const code = `VIP-${codeSuffix}`;
+      
+      // Duración en minutos según el plan
+      const durationMinutes = item.durationMinutes || (item.title?.includes("24") ? 1440 : 43200);
+
+      await createPass({
+        code,
+        durationMinutes,
+        assignedCookie: activeCookie,
+        description: `Generado para Orden ${order.id} (${item.title})`
+      });
+
+      generatedLicenses.push({
+        code,
+        planTitle: item.title,
+        durationMinutes
+      });
+    }
+  }
+
+  const updatedPayload = {
+    ...order,
+    status: "approved",
+    assignedLicenses: generatedLicenses,
+    adminNotes,
+    approvedAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  try {
+    const docRef = doc(db, ORDERS_COLLECTION, cleanId);
+    await setDoc(docRef, updatedPayload, { merge: true });
+  } catch (err) {
+    console.warn("Actualizando orden en fallback local:", err.message);
+  }
+
+  const local = getLocalOrders();
+  const idx = local.findIndex(o => o.id === cleanId || o.orderId === cleanId);
+  if (idx !== -1) {
+    local[idx] = updatedPayload;
+  } else {
+    local.unshift(updatedPayload);
+  }
+  saveLocalOrders(local);
+
+  return updatedPayload;
+}
+
+/**
+ * Rechazar orden de compra
+ */
+export async function rejectOrder(orderId, reason = "") {
+  const cleanId = orderId.trim();
+  const updatedPayload = {
+    status: "rejected",
+    rejectReason: reason,
+    updatedAt: Date.now()
+  };
+
+  try {
+    const docRef = doc(db, ORDERS_COLLECTION, cleanId);
+    await updateDoc(docRef, updatedPayload);
+  } catch (err) {
+    console.warn("Rechazo orden fallback local:", err.message);
+  }
+
+  const local = getLocalOrders();
+  const idx = local.findIndex(o => o.id === cleanId || o.orderId === cleanId);
+  if (idx !== -1) {
+    local[idx] = { ...local[idx], ...updatedPayload };
+    saveLocalOrders(local);
+  }
+  return updatedPayload;
+}
+

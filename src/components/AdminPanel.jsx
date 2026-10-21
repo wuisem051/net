@@ -15,7 +15,12 @@ import {
   MessageCircle,
   HelpCircle,
   Tv,
-  Edit2
+  Edit2,
+  ShoppingCart,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  Wallet
 } from 'lucide-react';
 import { 
   getAllPasses, 
@@ -26,7 +31,10 @@ import {
   resetPassTimer,
   getHomeConfig,
   saveHomeConfig,
-  DEFAULT_HOME_CONFIG
+  DEFAULT_HOME_CONFIG,
+  getAllOrders,
+  approveOrder,
+  rejectOrder
 } from '../services/authService';
 
 export default function AdminPanel({ onClose, onConfigUpdated }) {
@@ -34,13 +42,16 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
   const [adminPin, setAdminPin] = useState('');
   const [authError, setAuthError] = useState('');
 
-  const [activeTab, setActiveTab] = useState('passes'); // 'passes' | 'cookies' | 'home_settings'
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'passes' | 'cookies' | 'home_settings'
   const [passes, setPasses] = useState([]);
   const [cookiesPool, setCookiesPool] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [homeConfig, setHomeConfig] = useState(DEFAULT_HOME_CONFIG);
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [copiedCode, setCopiedCode] = useState(null);
+  const [processingOrderId, setProcessingOrderId] = useState(null);
+  const [orderFilter, setOrderFilter] = useState('all'); // 'all' | 'pending' | 'approved' | 'rejected'
 
   // Formulario Nuevo Pase / Licencia
   const [newPassCode, setNewPassCode] = useState('');
@@ -61,14 +72,16 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [fetchedPasses, fetchedCookies, fetchedConfig] = await Promise.all([
+      const [fetchedPasses, fetchedCookies, fetchedConfig, fetchedOrders] = await Promise.all([
         getAllPasses(),
         getCookiePool(),
-        getHomeConfig()
+        getHomeConfig(),
+        getAllOrders()
       ]);
       setPasses(fetchedPasses || []);
       setCookiesPool(fetchedCookies || []);
       setHomeConfig(fetchedConfig || DEFAULT_HOME_CONFIG);
+      setOrders(fetchedOrders || []);
 
       if (fetchedCookies && fetchedCookies.length > 0 && !newPassCookie) {
         setNewPassCookie(fetchedCookies[0].cookieData);
@@ -77,6 +90,37 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApproveOrder = async (orderId) => {
+    if (!confirm(`¿Confirmas que verificaste el pago de la orden ${orderId} en la blockchain y deseas emitir las licencias?`)) {
+      return;
+    }
+    setProcessingOrderId(orderId);
+    try {
+      await approveOrder(orderId, "Aprobado manualmente desde el panel de control.");
+      await loadAllData();
+      alert(`¡Orden ${orderId} aprobada con éxito! Las licencias VIP fueron generadas.`);
+    } catch (err) {
+      alert("Error al aprobar orden: " + err.message);
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
+  const handleRejectOrder = async (orderId) => {
+    const reason = prompt("Ingresa el motivo de rechazo (Ej. Hash inválido o monto no recibido):", "No se detectó la transferencia con el Hash proporcionado.");
+    if (reason === null) return;
+
+    setProcessingOrderId(orderId);
+    try {
+      await rejectOrder(orderId, reason);
+      await loadAllData();
+    } catch (err) {
+      alert("Error al rechazar orden: " + err.message);
+    } finally {
+      setProcessingOrderId(null);
     }
   };
 
@@ -381,10 +425,27 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
 
       {/* Tabs */}
       <div className="max-w-6xl mx-auto px-6 pt-6 pb-20">
-        <div className="flex border-b border-zinc-800 space-x-6 text-sm">
+        <div className="flex border-b border-zinc-800 space-x-6 text-sm overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 shrink-0 ${
+              activeTab === 'orders' 
+                ? 'border-[#E50914] text-white' 
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4 text-amber-400" />
+            <span>Órdenes y Pagos ({orders.length})</span>
+            {orders.filter(o => o.status === 'pending').length > 0 && (
+              <span className="bg-amber-500 text-black text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                {orders.filter(o => o.status === 'pending').length}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => setActiveTab('passes')}
-            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 ${
+            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 shrink-0 ${
               activeTab === 'passes' 
                 ? 'border-[#E50914] text-white' 
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -396,7 +457,7 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
 
           <button
             onClick={() => setActiveTab('cookies')}
-            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 ${
+            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 shrink-0 ${
               activeTab === 'cookies' 
                 ? 'border-[#E50914] text-white' 
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -408,16 +469,219 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
 
           <button
             onClick={() => setActiveTab('home_settings')}
-            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 ${
+            className={`pb-3 flex items-center gap-2 font-semibold transition cursor-pointer border-b-2 shrink-0 ${
               activeTab === 'home_settings' 
                 ? 'border-[#E50914] text-white' 
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>Personalizar Home y Precios</span>
+            <span>Personalizar Home, Precios y Wallets</span>
           </button>
         </div>
+
+        {/* TAB 0: ÓRDENES Y PAGOS CRIPTO / USDT */}
+        {activeTab === 'orders' && (
+          <div className="py-6 space-y-6">
+            
+            {/* Header y Filtros de Órdenes */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-[#E50914]" />
+                  <span>Verificación de Pagos y Emisión de Licencias</span>
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  Revisa el Hash de la transacción en blockchain. Al hacer clic en <strong>"Aprobar"</strong> se generarán automáticamente las claves VIP para el usuario.
+                </p>
+              </div>
+
+              {/* Filtro de Estado */}
+              <div className="flex items-center gap-1.5 bg-zinc-900 p-1 rounded-lg border border-zinc-800 text-xs font-semibold">
+                {[
+                  { id: 'all', label: 'Todas' },
+                  { id: 'pending', label: 'Pendientes' },
+                  { id: 'approved', label: 'Aprobadas' },
+                  { id: 'rejected', label: 'Rechazadas' }
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setOrderFilter(f.id)}
+                    className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                      orderFilter === f.id
+                        ? 'bg-[#E50914] text-white shadow'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Listado de Órdenes */}
+            {orders.filter(o => orderFilter === 'all' || o.status === orderFilter).length === 0 ? (
+              <div className="py-16 text-center bg-zinc-950 border border-zinc-800 rounded-xl space-y-2">
+                <ShoppingCart className="w-8 h-8 mx-auto text-zinc-600" />
+                <p className="text-sm text-zinc-400">No se encontraron órdenes en esta sección.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders
+                  .filter(o => orderFilter === 'all' || o.status === orderFilter)
+                  .map((order) => (
+                    <div
+                      key={order.id || order.orderId}
+                      className={`border rounded-xl p-5 transition bg-zinc-950/90 ${
+                        order.status === 'pending'
+                          ? 'border-amber-500/50 shadow-lg shadow-amber-950/20'
+                          : order.status === 'approved'
+                          ? 'border-emerald-500/40'
+                          : 'border-zinc-800 opacity-70'
+                      }`}
+                    >
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800 pb-4 mb-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base font-mono font-black text-white">{order.orderId || order.id}</span>
+                            
+                            {order.status === 'pending' && (
+                              <span className="bg-amber-950/80 text-amber-300 border border-amber-500/40 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                <Clock className="w-3 h-3 animate-spin" /> Pendiente de Verificación
+                              </span>
+                            )}
+                            {order.status === 'approved' && (
+                              <span className="bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Aprobada y Entregada
+                              </span>
+                            )}
+                            {order.status === 'rejected' && (
+                              <span className="bg-red-950/80 text-red-300 border border-red-500/40 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                                Rechazada
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+                            <span>Cliente: <strong className="text-zinc-200">{order.customerEmail || 'No especificado'}</strong></span>
+                            {order.customerName && <span>({order.customerName})</span>}
+                            <span>•</span>
+                            <span>Fecha: {order.createdAt ? new Date(order.createdAt).toLocaleString() : 'N/A'}</span>
+                          </div>
+                        </div>
+
+                        {/* Monto Total */}
+                        <div className="text-left lg:text-right">
+                          <span className="text-[11px] text-zinc-400 uppercase tracking-wider block">Monto a Verificar</span>
+                          <span className="text-2xl font-black text-white">
+                            ${order.amountUsd} <span className="text-xs text-emerald-400">USDT</span>
+                          </span>
+                          <span className="block text-[11px] text-zinc-400 font-mono">Red: {order.network || 'TRC20'}</span>
+                        </div>
+                      </div>
+
+                      {/* Detalles del Pago e Items */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs mb-4">
+                        
+                        {/* Datos de la Transferencia / Hash */}
+                        <div className="bg-zinc-900/60 p-3.5 rounded-lg border border-zinc-800 space-y-2">
+                          <span className="font-semibold text-zinc-300 uppercase tracking-wider block text-[11px]">
+                            Datos de Transacción Blockchain:
+                          </span>
+                          
+                          <div>
+                            <span className="text-zinc-400">Hash / TxID proporcionado:</span>
+                            <div className="flex items-center gap-1.5 mt-1 bg-black/60 p-2 rounded border border-zinc-700">
+                              <code className="text-[11px] font-mono text-amber-300 break-all select-all flex-1">
+                                {order.transactionHash || 'No ingresado'}
+                              </code>
+                              {order.transactionHash && (
+                                <button
+                                  onClick={() => handleCopy(order.transactionHash)}
+                                  className="text-zinc-400 hover:text-white p-1"
+                                  title="Copiar Hash"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {order.proofNote && (
+                            <p className="text-zinc-400 italic">
+                              Nota del cliente: "{order.proofNote}"
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Items Comprados */}
+                        <div className="bg-zinc-900/60 p-3.5 rounded-lg border border-zinc-800 space-y-2">
+                          <span className="font-semibold text-zinc-300 uppercase tracking-wider block text-[11px]">
+                            Licencias Solicitadas:
+                          </span>
+                          <ul className="space-y-1.5">
+                            {(order.items || []).map((it, idx) => (
+                              <li key={idx} className="flex items-center justify-between bg-black/40 p-2 rounded">
+                                <span className="font-bold text-white">{it.title} x {it.quantity || 1}</span>
+                                <span className="text-emerald-400 font-mono">{it.price}</span>
+                              </li>
+                            ))}
+                          </ul>
+
+                          {/* Licencias asignadas si ya está aprobada */}
+                          {order.status === 'approved' && order.assignedLicenses?.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-zinc-800">
+                              <span className="text-[11px] text-emerald-400 font-semibold block mb-1">
+                                Claves VIP generadas para el cliente:
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {order.assignedLicenses.map((lic, lIdx) => (
+                                  <code key={lIdx} className="bg-red-950 border border-red-500/40 text-white font-mono px-2 py-0.5 rounded text-xs">
+                                    {lic.code}
+                                  </code>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {order.status === 'rejected' && (
+                            <p className="text-red-400 italic">
+                              Motivo de rechazo: {order.rejectReason || 'No especificado'}
+                            </p>
+                          )}
+                        </div>
+
+                      </div>
+
+                      {/* Botones de Acción Admin */}
+                      {order.status === 'pending' && (
+                        <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800/80">
+                          <button
+                            onClick={() => handleRejectOrder(order.id || order.orderId)}
+                            disabled={processingOrderId === (order.id || order.orderId)}
+                            className="bg-zinc-800 hover:bg-red-950 hover:text-red-300 hover:border-red-500/40 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            Rechazar Pago
+                          </button>
+
+                          <button
+                            onClick={() => handleApproveOrder(order.id || order.orderId)}
+                            disabled={processingOrderId === (order.id || order.orderId)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg text-xs font-bold transition cursor-pointer shadow-lg shadow-emerald-950 flex items-center gap-2"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>{processingOrderId === (order.id || order.orderId) ? 'Procesando...' : 'Aprobar Pago y Emitir Licencias VIP'}</span>
+                          </button>
+                        </div>
+                      )}
+
+                    </div>
+                  ))}
+              </div>
+            )}
+
+          </div>
+        )}
 
         {/* TAB 1: LICENCIAS Y PASES CON COOKIES */}
         {activeTab === 'passes' && (
@@ -782,6 +1046,73 @@ export default function AdminPanel({ onClose, onConfigUpdated }) {
                           value={homeConfig.planMonthlyDuration}
                           onChange={(e) => setHomeConfig({ ...homeConfig, planMonthlyDuration: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Configuración de Billeteras USDT y Cripto */}
+                <div className="border-t border-zinc-800 pt-6 space-y-4">
+                  <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-emerald-400" />
+                    <span>Direcciones de Billetera para Cobro (USDT / Cripto)</span>
+                  </h4>
+                  <p className="text-xs text-zinc-400">
+                    Estas direcciones son las que se le mostrarán al cliente con código QR en el carrito de compras.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* USDT TRC20 */}
+                    <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white">USDT (Red TRC20 - Tron)</span>
+                        <span className="text-[10px] bg-red-950 text-red-300 px-2 py-0.5 rounded border border-red-500/40">Recomendado</span>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">Dirección de depósito:</label>
+                        <input
+                          type="text"
+                          value={homeConfig.cryptoWallets?.usdt_trc20?.address || ''}
+                          onChange={(e) => setHomeConfig({
+                            ...homeConfig,
+                            cryptoWallets: {
+                              ...homeConfig.cryptoWallets,
+                              usdt_trc20: {
+                                ...(homeConfig.cryptoWallets?.usdt_trc20 || { name: 'USDT (TRC20)', network: 'TRC20', enabled: true }),
+                                address: e.target.value
+                              }
+                            }
+                          })}
+                          placeholder="Ej. TYDzsxdjhGjhG67b8sd8sd8923hhjksd98..."
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs font-mono text-amber-300 focus:outline-none focus:border-[#E50914]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* USDT BEP20 */}
+                    <div className="bg-zinc-900/60 p-4 border border-zinc-800 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white">USDT (Red BEP20 - BSC)</span>
+                        <span className="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40">Bajas comisiones</span>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-zinc-400">Dirección de depósito:</label>
+                        <input
+                          type="text"
+                          value={homeConfig.cryptoWallets?.usdt_bep20?.address || ''}
+                          onChange={(e) => setHomeConfig({
+                            ...homeConfig,
+                            cryptoWallets: {
+                              ...homeConfig.cryptoWallets,
+                              usdt_bep20: {
+                                ...(homeConfig.cryptoWallets?.usdt_bep20 || { name: 'USDT (BEP20)', network: 'BEP20 (BSC)', enabled: true }),
+                                address: e.target.value
+                              }
+                            }
+                          })}
+                          placeholder="Ej. 0x71c89320e4d0b134f593b4f6e2fba6429d3c52a1..."
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs font-mono text-amber-300 focus:outline-none focus:border-[#E50914]"
                         />
                       </div>
                     </div>

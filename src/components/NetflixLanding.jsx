@@ -8,16 +8,25 @@ import {
   CreditCard, 
   Flame, 
   Zap, 
-  ArrowRight,
-  Plus,
-  Minus,
-  MessageCircle
+  ArrowRight, 
+  Plus, 
+  Minus, 
+  MessageCircle, 
+  ShoppingCart, 
+  Search, 
+  Check 
 } from 'lucide-react';
 import { DEFAULT_HOME_CONFIG } from '../services/authService';
+import CheckoutModal from './CheckoutModal';
 
 export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_CONFIG }) {
   const [openFaq, setOpenFaq] = useState(null);
   const [accessCodeInput, setAccessCodeInput] = useState('');
+  
+  // Estado del Carrito y Modal de Checkout
+  const [cart, setCart] = useState([]);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [addedAnimation, setAddedAnimation] = useState(null);
 
   const config = { ...DEFAULT_HOME_CONFIG, ...homeConfig };
 
@@ -30,11 +39,37 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
     onGoToLogin(accessCodeInput);
   };
 
-  const handleWhatsappContact = () => {
-    const phone = (config.whatsappNumber || "").replace(/[^0-9]/g, '');
-    const url = phone ? `https://wa.me/${phone}?text=Hola,%20deseo%20adquirir%20un%20acceso%20a%20Netflix%20VIP` : 'https://wa.me/';
-    window.open(url, '_blank');
+  // Funciones del Carrito
+  const addToCart = (plan) => {
+    setCart((prev) => {
+      const existing = prev.find(item => item.id === plan.id);
+      if (existing) {
+        return prev.map(item => item.id === plan.id ? { ...item, quantity: (item.quantity || 1) + 1 } : item);
+      }
+      return [...prev, { ...plan, quantity: 1 }];
+    });
+    setAddedAnimation(plan.id);
+    setTimeout(() => setAddedAnimation(null), 1500);
+    setIsCheckoutOpen(true);
   };
+
+  const updateQuantity = (id, newQty) => {
+    if (newQty <= 0) {
+      removeFromCart(id);
+      return;
+    }
+    setCart((prev) => prev.map(item => item.id === id ? { ...item, quantity: newQty } : item));
+  };
+
+  const removeFromCart = (id) => {
+    setCart((prev) => prev.filter(item => item.id !== id));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const totalCartCount = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
   const pricingPlans = [
     {
@@ -42,8 +77,10 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
       title: "Prueba Gratuita VIP",
       price: config.planFreePrice || "$0.00",
       duration: config.planFreeDuration || "60 Minutos de Acceso",
+      durationMinutes: 60,
       badge: "100% GRATIS",
       featured: false,
+      isFree: true,
       features: [
         "Catálogo completo en Ultra HD 4K",
         "Sin tarjeta de crédito requerida",
@@ -57,10 +94,12 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
     {
       id: "pass_24h",
       title: "Pase 24 Horas",
-      price: config.plan24hPrice || "$1.99",
+      price: config.plan24hPrice || "$0.99",
       duration: config.plan24hDuration || "Acceso Completo 1 Día",
+      durationMinutes: 1440,
       badge: "IDEAL PARA MARATÓN",
       featured: false,
+      isFree: false,
       features: [
         "24 horas continuas sin interrupción",
         "Cuentas oficiales verificadas",
@@ -68,16 +107,24 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
         "Acceso directo sin claves complejas",
         "Garantía de reposición inmediata"
       ],
-      buttonText: "Solicitar Pase 24H",
-      action: handleWhatsappContact
+      buttonText: "Añadir al Carrito",
+      action: () => addToCart({
+        id: "pass_24h",
+        title: "Pase 24 Horas",
+        price: config.plan24hPrice || "$0.99",
+        duration: config.plan24hDuration || "Acceso Completo 1 Día",
+        durationMinutes: 1440
+      })
     },
     {
       id: "monthly_vip",
       title: "Membresía Mensual VIP",
-      price: config.planMonthlyPrice || "$3.99",
+      price: config.planMonthlyPrice || "$4.99",
       duration: config.planMonthlyDuration || "30 Días de Streaming Ilimitado",
+      durationMinutes: 43200,
       badge: "MÁS POPULAR • 80% AHORRO",
       featured: true,
+      isFree: false,
       features: [
         "Ahorra hasta un 80% frente al precio estándar",
         "Perfil privado dedicado y seguro",
@@ -85,8 +132,14 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
         "Descarga de contenido offline",
         "Soporte y renovación garantizada los 30 días"
       ],
-      buttonText: "Obtener Cuenta Mensual",
-      action: handleWhatsappContact
+      buttonText: "Comprar Membresía",
+      action: () => addToCart({
+        id: "monthly_vip",
+        title: "Membresía Mensual VIP",
+        price: config.planMonthlyPrice || "$4.99",
+        duration: config.planMonthlyDuration || "30 Días de Streaming Ilimitado",
+        durationMinutes: 43200
+      })
     }
   ];
 
@@ -134,6 +187,21 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Botón Carrito */}
+            <button
+              onClick={() => setIsCheckoutOpen(true)}
+              className="relative p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 text-white transition cursor-pointer flex items-center gap-2 px-3"
+              title="Ver Carrito de Compras"
+            >
+              <ShoppingCart className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-bold hidden sm:inline">Carrito</span>
+              {totalCartCount > 0 && (
+                <span className="bg-[#E50914] text-white text-[11px] font-black w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
+                  {totalCartCount}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => onGoToLogin('VIP-PRUEBA')}
               className="hidden sm:flex items-center gap-1.5 text-xs text-amber-300 bg-amber-950/60 border border-amber-500/40 hover:bg-amber-900/60 px-3.5 py-1.5 rounded transition cursor-pointer font-semibold"
@@ -343,7 +411,7 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
         <div className="p-8 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-4">
           <h3 className="text-xl font-bold text-white">¿Listo para comenzar a ver?</h3>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
-            Activa ahora tu hora de prueba gratuita con la clave <strong>VIP-PRUEBA</strong> o contáctanos por WhatsApp para solicitar tu cuenta mensual con descuento.
+            Activa ahora tu hora de prueba gratuita con la clave <strong>VIP-PRUEBA</strong> o adquiere tu membresía de manera inmediata con USDT/Cripto.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <button
@@ -354,11 +422,11 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
               <span>Entrar con Clave VIP-PRUEBA</span>
             </button>
             <button
-              onClick={handleWhatsappContact}
+              onClick={() => setIsCheckoutOpen(true)}
               className="bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-sm px-6 py-3 rounded-lg flex items-center gap-2 cursor-pointer border border-zinc-700 w-full sm:w-auto justify-center"
             >
-              <MessageCircle className="w-4 h-4 text-emerald-400" />
-              <span>Comprar por WhatsApp</span>
+              <ShoppingCart className="w-4 h-4 text-amber-400" />
+              <span>Comprar con USDT / Cripto</span>
             </button>
           </div>
         </div>
@@ -371,6 +439,35 @@ export default function NetflixLanding({ onGoToLogin, homeConfig = DEFAULT_HOME_
           Servicio independiente de gestión y distribución de licencias de entretenimiento digital.
         </p>
       </footer>
+
+      {/* BOTÓN FLOTANTE INFERIOR DERECHO DE CARRITO */}
+      {totalCartCount > 0 && (
+        <div className="fixed bottom-6 right-6 z-40 animate-bounce">
+          <button
+            onClick={() => setIsCheckoutOpen(true)}
+            className="bg-[#E50914] hover:bg-[#b80710] text-white px-5 py-3 rounded-full font-bold shadow-2xl shadow-red-950 flex items-center gap-2.5 cursor-pointer border-2 border-red-500"
+          >
+            <ShoppingCart className="w-5 h-5" />
+            <span className="text-sm">Ver Carrito ({totalCartCount})</span>
+          </button>
+        </div>
+      )}
+
+      {/* MODAL DE CHECKOUT Y CARRITO */}
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        cart={cart}
+        onUpdateQuantity={updateQuantity}
+        onRemoveItem={removeFromCart}
+        onClearCart={clearCart}
+        cryptoWallets={config.cryptoWallets}
+        onOrderCompleted={(order) => {
+          // Si el usuario quiere continuar viendo el estado
+          console.log("Orden completada:", order);
+        }}
+      />
     </div>
   );
 }
+
