@@ -27,10 +27,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.content.Intent;
 import android.net.Uri;
-import android.provider.Browser;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.browser.customtabs.CustomTabColorSchemeParams;
+import androidx.browser.customtabs.CustomTabsIntent;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -658,42 +659,51 @@ public class CookiePlugin extends Plugin {
         }
     }
 
+    /**
+     * Abre la URL usando Chrome Custom Tabs.
+     * VENTAJA CLAVE: Custom Tabs corre en el proceso de Chrome, que tiene:
+     *  - Widevine L1 (hardware) -> Netflix puede reproducir video
+     *  - Mismo CookieManager que el WebView -> las cookies inyectadas ya están disponibles
+     */
     private void launchExternalPlayer(Context context, String url) {
         try {
             if (url == null || url.isEmpty()) {
                 url = "https://www.netflix.com/browse";
             }
-            Uri targetUri = Uri.parse(url);
 
-            // Obtener cookies actuales
-            CookieManager cookieManager = CookieManager.getInstance();
-            String cookies = cookieManager.getCookie("https://www.netflix.com");
+            // Asegurarse de que el CookieManager hizo flush antes de abrir Custom Tabs
+            CookieManager.getInstance().flush();
 
-            Intent intent = new Intent(Intent.ACTION_VIEW, targetUri);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            // Construir Custom Tabs con tema oscuro (acorde a Netflix)
+            CustomTabColorSchemeParams darkParams = new CustomTabColorSchemeParams.Builder()
+                .setToolbarColor(Color.parseColor("#141414"))   // negro Netflix
+                .setNavigationBarColor(Color.parseColor("#141414"))
+                .setNavigationBarDividerColor(Color.parseColor("#E50914"))
+                .build();
 
-            if (cookies != null && !cookies.isEmpty()) {
-                Bundle bundle = new Bundle();
-                bundle.putString("Cookie", cookies);
-                intent.putExtra(Browser.EXTRA_HEADERS, bundle);
-            }
+            CustomTabsIntent customTabsIntent = new CustomTabsIntent.Builder()
+                .setColorScheme(CustomTabsIntent.COLOR_SCHEME_DARK)
+                .setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK, darkParams)
+                .setShowTitle(false)
+                .setUrlBarHidingEnabled(true)   // oculta la barra de URL al hacer scroll
+                .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                .build();
 
-            // Intentar abrir con Google Chrome (soporta Widevine L1/L3 completo)
-            intent.setPackage("com.android.chrome");
-            try {
-                context.startActivity(intent);
-                return;
-            } catch (Exception chromeNotFound) {
-                Log.w(TAG, "Chrome not found, trying general browser intent");
-            }
-
-            // Si Chrome no está, intentar con el navegador por defecto
-            Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, targetUri);
-            fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(fallbackIntent);
+            // Forzar Google Chrome (Widevine L1 garantizado)
+            customTabsIntent.intent.setPackage("com.android.chrome");
+            customTabsIntent.launchUrl(context, Uri.parse(url));
+            Log.d(TAG, "Launched Chrome Custom Tabs: " + url);
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to launch external player", e);
+            Log.w(TAG, "Chrome Custom Tabs failed, fallback to ACTION_VIEW", e);
+            // Fallback si Chrome no está instalado
+            try {
+                Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(fallback);
+            } catch (Exception ex) {
+                Log.e(TAG, "Fallback intent also failed", ex);
+            }
         }
     }
 
