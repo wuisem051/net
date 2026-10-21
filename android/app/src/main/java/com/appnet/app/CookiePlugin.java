@@ -15,12 +15,13 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -187,12 +188,42 @@ public class CookiePlugin extends Plugin {
                         public void onPageFinished(WebView view, String url) {
                             super.onPageFinished(view, url);
                             Log.d(TAG, "Page finished loading: " + url);
-                            // JS: forzar play en elementos de video que esten pausados
-                            view.evaluateJavascript(
-                                "(function(){ try { var vs=document.querySelectorAll('video'); " +
-                                "for(var i=0;i<vs.length;i++){ vs[i].play().catch(function(){}); } } catch(e){} })();",
-                                null
-                            );
+
+                            // Interceptar navegación SPA (pushState/replaceState) y clics en películas
+                            String jsInterceptor =
+                                "(function(){" +
+                                "  if (window._netflixBridgeAttached) return;" +
+                                "  window._netflixBridgeAttached = true;" +
+                                "  function checkUrl(u) {" +
+                                "    if (u && (u.indexOf('/watch/') !== -1 || u.indexOf('/watch') !== -1)) {" +
+                                "      if (window.AndroidBridge && window.AndroidBridge.openPlayer) {" +
+                                "        window.AndroidBridge.openPlayer(window.location.href);" +
+                                "      }" +
+                                "    }" +
+                                "  }" +
+                                "  var origPush = history.pushState;" +
+                                "  history.pushState = function() {" +
+                                "    origPush.apply(this, arguments);" +
+                                "    setTimeout(function(){ checkUrl(window.location.pathname); }, 100);" +
+                                "  };" +
+                                "  var origReplace = history.replaceState;" +
+                                "  history.replaceState = function() {" +
+                                "    origReplace.apply(this, arguments);" +
+                                "    setTimeout(function(){ checkUrl(window.location.pathname); }, 100);" +
+                                "  };" +
+                                "  window.addEventListener('popstate', function(){ checkUrl(window.location.pathname); });" +
+                                "  document.addEventListener('click', function(e){" +
+                                "    var el = e.target.closest('a');" +
+                                "    if (el && el.href && el.href.indexOf('/watch/') !== -1) {" +
+                                "      e.preventDefault();" +
+                                "      e.stopPropagation();" +
+                                "      if (window.AndroidBridge && window.AndroidBridge.openPlayer) {" +
+                                "        window.AndroidBridge.openPlayer(el.href);" +
+                                "      }" +
+                                "    }" +
+                                "  }, true);" +
+                                "})();";
+                            view.evaluateJavascript(jsInterceptor, null);
                         }
 
                         @Override
@@ -224,6 +255,21 @@ public class CookiePlugin extends Plugin {
                             });
                         }
                     });
+
+                    // Puente JavaScript para interceptar eventos de reproducción en tiempo real
+                    netflixWebView.addJavascriptInterface(new Object() {
+                        @JavascriptInterface
+                        public void openPlayer(final String url) {
+                            activity.runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Log.d(TAG, "AndroidBridge openPlayer called: " + url);
+                                    launchExternalPlayer(activity, url);
+                                }
+                            });
+                        }
+                    }, "AndroidBridge");
+
                     rootLayout.addView(netflixWebView);
 
                     // 6. Barra flotante con temporizador
