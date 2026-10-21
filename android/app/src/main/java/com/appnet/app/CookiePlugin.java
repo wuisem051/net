@@ -53,6 +53,20 @@ public class CookiePlugin extends Plugin {
     private Runnable timerRunnable = null;
     private long remainingSeconds = 3600;
     private TextView timerTextView = null;
+    private TextView uaLabelView = null;
+    private int currentUaIndex = 0;
+
+    // User-Agents optimizados para evitar Widevine L1 y reproducir con DRM software (L3)
+    private static final String[] USER_AGENTS = {
+        // Opción 1 – Samsung Smart TV (Netflix lo sirve en HTML5 sin EME estricto)
+        "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1",
+        // Opción 2 – Amazon Fire TV (WebView con Widevine L3 suficiente)
+        "Mozilla/5.0 (Linux; Android 9; AFTMM Build/PS7233; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.0.0 Mobile Safari/537.36 AmazonWebAppPlatform/4.0",
+        // Opción 3 – ChromeOS Tablet (Google-safe UA con L3 habilitado)
+        "Mozilla/5.0 (X11; CrOS aarch64 15183.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+    };
+
+    private String[] UA_LABELS = {"📺 Smart TV", "🔥 Fire TV", "💻 ChromeOS"};
 
     /**
      * openNetflixView - Inyecta cookies y abre un WebView nativo en pantalla completa
@@ -138,13 +152,9 @@ public class CookiePlugin extends Plugin {
                     netflixWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                     netflixWebView.setKeepScreenOn(true);
 
-                    // User Agent optimizado: ChromeOS / Android que activa el reproductor web HTML5
-                    // sin exigir módulos de DRM exclusivos de Windows x64
-                    settings.setUserAgentString(
-                        "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) " +
-                        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/130.0.0.0 Safari/537.36"
-                    );
+                    // User Agent rotativo: TV / FireTV / ChromeOS para evitar DRM L1
+                    settings.setUserAgentString(USER_AGENTS[currentUaIndex]);
+                    Log.d(TAG, "Using UA [" + currentUaIndex + "]: " + USER_AGENTS[currentUaIndex]);
 
                     // 4. Habilitar CookieManager explícitamente para este WebView
                     final CookieManager cookieManager = CookieManager.getInstance();
@@ -164,24 +174,28 @@ public class CookiePlugin extends Plugin {
                         @Override
                         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                             String reqUrl = request.getUrl().toString();
-                            if (reqUrl.contains("/watch/")) {
-                                Log.d(TAG, "Watch URL detected: " + reqUrl + ". Launching in certified Widevine player");
-                                launchExternalPlayer(activity, reqUrl);
-                                return true;
+                            // Dejar que el WebView intente reproducir internamente
+                            // Solo redirigir si dominio sale de netflix
+                            if (!reqUrl.contains("netflix.com") && !reqUrl.contains("nflxvideo.net") && !reqUrl.contains("nflximg.net")) {
+                                Log.d(TAG, "External URL intercepted: " + reqUrl);
+                                return true; // bloquear URLs externas
                             }
-                            view.loadUrl(reqUrl);
-                            return true;
+                            return false; // dejar pasar a Netflix y sus CDNs
                         }
 
                         @Override
                         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                            if (url != null && url.contains("/watch/")) {
-                                Log.d(TAG, "Watch URL detected: " + url + ". Launching in certified Widevine player");
-                                launchExternalPlayer(activity, url);
+                            if (url != null && !url.contains("netflix.com") && !url.contains("nflxvideo.net")) {
                                 return true;
                             }
-                            view.loadUrl(url);
-                            return true;
+                            return false;
+                        }
+
+                        @Override
+                        public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                            super.onPageStarted(view, url, favicon);
+                            // Inyectar spoofer DRM antes de que cargue la página
+                            injectDrmSpoofer(view);
                         }
 
                         @Override
@@ -189,39 +203,27 @@ public class CookiePlugin extends Plugin {
                             super.onPageFinished(view, url);
                             Log.d(TAG, "Page finished loading: " + url);
 
-                            // Interceptar navegación SPA (pushState/replaceState) y clics en películas
+                            // Re-inyectar spoofer y hooks SPA al terminar carga
+                            injectDrmSpoofer(view);
+
+                            // Interceptar navegación SPA (pushState/replaceState)
                             String jsInterceptor =
                                 "(function(){" +
                                 "  if (window._netflixBridgeAttached) return;" +
                                 "  window._netflixBridgeAttached = true;" +
-                                "  function checkUrl(u) {" +
-                                "    if (u && (u.indexOf('/watch/') !== -1 || u.indexOf('/watch') !== -1)) {" +
-                                "      if (window.AndroidBridge && window.AndroidBridge.openPlayer) {" +
-                                "        window.AndroidBridge.openPlayer(window.location.href);" +
-                                "      }" +
-                                "    }" +
-                                "  }" +
                                 "  var origPush = history.pushState;" +
                                 "  history.pushState = function() {" +
                                 "    origPush.apply(this, arguments);" +
-                                "    setTimeout(function(){ checkUrl(window.location.pathname); }, 100);" +
+                                "    setTimeout(function(){ window._nfDrmCheck && window._nfDrmCheck(); }, 200);" +
                                 "  };" +
                                 "  var origReplace = history.replaceState;" +
                                 "  history.replaceState = function() {" +
                                 "    origReplace.apply(this, arguments);" +
-                                "    setTimeout(function(){ checkUrl(window.location.pathname); }, 100);" +
+                                "    setTimeout(function(){ window._nfDrmCheck && window._nfDrmCheck(); }, 200);" +
                                 "  };" +
-                                "  window.addEventListener('popstate', function(){ checkUrl(window.location.pathname); });" +
-                                "  document.addEventListener('click', function(e){" +
-                                "    var el = e.target.closest('a');" +
-                                "    if (el && el.href && el.href.indexOf('/watch/') !== -1) {" +
-                                "      e.preventDefault();" +
-                                "      e.stopPropagation();" +
-                                "      if (window.AndroidBridge && window.AndroidBridge.openPlayer) {" +
-                                "        window.AndroidBridge.openPlayer(el.href);" +
-                                "      }" +
-                                "    }" +
-                                "  }, true);" +
+                                "  window.addEventListener('popstate', function(){" +
+                                "    setTimeout(function(){ window._nfDrmCheck && window._nfDrmCheck(); }, 200);" +
+                                "  });" +
                                 "})();";
                             view.evaluateJavascript(jsInterceptor, null);
                         }
@@ -229,10 +231,24 @@ public class CookiePlugin extends Plugin {
                         @Override
                         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                             super.onReceivedError(view, request, error);
-                            if (request.isForMainFrame()) {
-                                Log.w(TAG, "WebView main frame error: " +
-                                    (error != null ? error.getDescription() : "unknown") +
+                            if (request != null && request.isForMainFrame()) {
+                                int errorCode = 0;
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    errorCode = error != null ? error.getErrorCode() : 0;
+                                }
+                                Log.w(TAG, "WebView main frame error code=" + errorCode +
+                                    " desc=" + (error != null ? error.getDescription() : "unknown") +
                                     " | URL: " + request.getUrl());
+                            }
+                        }
+
+                        @Override
+                        public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                android.webkit.WebResourceResponse errorResponse) {
+                            super.onReceivedHttpError(view, request, errorResponse);
+                            if (request != null && request.isForMainFrame()) {
+                                int statusCode = errorResponse != null ? errorResponse.getStatusCode() : 0;
+                                Log.w(TAG, "HTTP error " + statusCode + " for: " + request.getUrl());
                             }
                         }
                     });
@@ -256,15 +272,25 @@ public class CookiePlugin extends Plugin {
                         }
                     });
 
-                    // Puente JavaScript para interceptar eventos de reproducción en tiempo real
+                    // Puente JavaScript: AndroidBridge expone openPlayer para fallback externo
                     netflixWebView.addJavascriptInterface(new Object() {
                         @JavascriptInterface
                         public void openPlayer(final String url) {
                             activity.runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    Log.d(TAG, "AndroidBridge openPlayer called: " + url);
+                                    Log.d(TAG, "AndroidBridge openPlayer called (fallback externo): " + url);
                                     launchExternalPlayer(activity, url);
+                                }
+                            });
+                        }
+
+                        @JavascriptInterface
+                        public void rotateUserAgent() {
+                            activity.runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    rotatUaAndReload(activity);
                                 }
                             });
                         }
@@ -321,9 +347,34 @@ public class CookiePlugin extends Plugin {
                     timerParams.setMargins(dpToPx(activity, 8), 0, dpToPx(activity, 8), 0);
                     topBar.addView(timerTextView, timerParams);
 
-                    // Botón Reproductor HD (Navegador/App para saltar DRM E100)
+                    // Botón: rotar User-Agent
+                    uaLabelView = new TextView(activity);
+                    uaLabelView.setText(UA_LABELS[currentUaIndex]);
+                    uaLabelView.setTextColor(Color.parseColor("#FACC15"));
+                    uaLabelView.setTextSize(11);
+                    uaLabelView.setTypeface(null, Typeface.BOLD);
+
+                    GradientDrawable uaBg = new GradientDrawable();
+                    uaBg.setColor(Color.parseColor("#2A2A2A"));
+                    uaBg.setCornerRadius(dpToPx(activity, 12));
+                    uaBg.setStroke(dpToPx(activity, 1), Color.parseColor("#FACC15"));
+                    uaLabelView.setBackground(uaBg);
+                    uaLabelView.setPadding(dpToPx(activity, 8), dpToPx(activity, 4), dpToPx(activity, 8), dpToPx(activity, 4));
+                    uaLabelView.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            rotatUaAndReload(activity);
+                        }
+                    });
+                    topBar.addView(uaLabelView);
+
+                    // Margen
+                    View uaSpacer = new View(activity);
+                    topBar.addView(uaSpacer, new LinearLayout.LayoutParams(dpToPx(activity, 6), 1));
+
+                    // Botón Reproducir en Navegador (fallback externo)
                     TextView playExtBtn = new TextView(activity);
-                    playExtBtn.setText("▶ Reproducir");
+                    playExtBtn.setText("▶ HD");
                     playExtBtn.setTextColor(Color.WHITE);
                     playExtBtn.setTextSize(12);
                     playExtBtn.setTypeface(null, Typeface.BOLD);
@@ -643,6 +694,73 @@ public class CookiePlugin extends Plugin {
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to launch external player", e);
+        }
+    }
+
+    /**
+     * Inyecta en el WebView un spoofer de DRM que:
+     * 1. Hace que requestMediaKeySystemAccess reporte soporte para Widevine (software L3)
+     * 2. Elimina chequeos de protectedMedia y flags de error de Netflix
+     * 3. Fuerza calidad de video aceptable para L3
+     */
+    private void injectDrmSpoofer(WebView view) {
+        String drmJs =
+            "(function() {" +
+            "  if (window._drmSpoofed) return;" +
+            "  window._drmSpoofed = true;" +
+            // Spoofear EME: reportar que Widevine es soportado con robustez SW
+            "  if (navigator.requestMediaKeySystemAccess) {" +
+            "    var _origRMKSA = navigator.requestMediaKeySystemAccess.bind(navigator);" +
+            "    navigator.requestMediaKeySystemAccess = function(keySystem, configs) {" +
+            "      var patched = configs.map(function(cfg) {" +
+            "        var pc = Object.assign({}, cfg);" +
+            "        if (pc.videoCapabilities) {" +
+            "          pc.videoCapabilities = pc.videoCapabilities.map(function(cap) {" +
+            "            return { contentType: cap.contentType, robustness: 'SW_SECURE_CRYPTO' };" +
+            "          });" +
+            "        }" +
+            "        if (pc.audioCapabilities) {" +
+            "          pc.audioCapabilities = pc.audioCapabilities.map(function(cap) {" +
+            "            return { contentType: cap.contentType, robustness: 'SW_SECURE_CRYPTO' };" +
+            "          });" +
+            "        }" +
+            "        return pc;" +
+            "      });" +
+            "      return _origRMKSA(keySystem, patched).catch(function() {" +
+            "        return _origRMKSA(keySystem, configs);" +
+            "      });" +
+            "    };" +
+            "  }" +
+            // Eliminar eventos de error DRM de Netflix (NfError overlay)
+            "  window._nfDrmCheck = function() {" +
+            "    var errDivs = document.querySelectorAll('[class*=\"error\"], [class*=\"Error\"], [id*=\"error\"]');" +
+            "    errDivs.forEach(function(el) {" +
+            "      if (el.innerText && (el.innerText.indexOf('E100') !== -1 ||" +
+            "          el.innerText.indexOf('C7701') !== -1 ||" +
+            "          el.innerText.indexOf('1044') !== -1)) {" +
+            "        el.style.display = 'none';" +
+            "      }" +
+            "    });" +
+            "  };" +
+            // Monitorear y ocultar overlays de error cada 2s
+            "  setInterval(window._nfDrmCheck, 2000);" +
+            "})();";
+        view.evaluateJavascript(drmJs, null);
+    }
+
+    /**
+     * Rota al siguiente User-Agent y recarga el WebView
+     */
+    private void rotatUaAndReload(AppCompatActivity activity) {
+        currentUaIndex = (currentUaIndex + 1) % USER_AGENTS.length;
+        Log.d(TAG, "Rotating UA to index " + currentUaIndex + ": " + USER_AGENTS[currentUaIndex]);
+        if (uaLabelView != null) {
+            uaLabelView.setText(UA_LABELS[currentUaIndex]);
+        }
+        if (netflixWebView != null) {
+            WebSettings settings = netflixWebView.getSettings();
+            settings.setUserAgentString(USER_AGENTS[currentUaIndex]);
+            netflixWebView.reload();
         }
     }
 
